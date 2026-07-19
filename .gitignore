@@ -1,0 +1,47 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build products
+build/
+dist/
+*.egg-info/
+
+# Testing and code-quality tools
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# IDE files
+.idea/
+.vscode/
+
+# Environment variables and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# AI-DAC runtime files
+logs/
+reports/
+data/private/
+models/private/
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+
+# Local backup files
+*.backup
