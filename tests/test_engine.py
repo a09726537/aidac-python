@@ -191,9 +191,9 @@ def test_negative_rows_affected_is_rejected() -> None:
 
     with pytest.raises(ValueError, match="rows_affected cannot be negative"):
         DatabaseEvent(
-            query="SELECT 1;",
+            query="UPDATE customers SET active = true;",
             username="user1",
             database="test",
             source_system="postgresql",
-            duration_ms=-10.0,
+            rows_affected=-1,
         )

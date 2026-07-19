@@ -45,3 +45,9 @@ Thumbs.db
 
 # Local backup files
 *.backup
+
+# Local deployment secrets
+.env
+.env.*
+*.token
+publish.env
