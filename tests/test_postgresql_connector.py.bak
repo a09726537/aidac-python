@@ -1,0 +1,391 @@
+"""Tests for the AI-DAC PostgreSQL connector."""
+
+from datetime import datetime, timezone
+from types import TracebackType
+from typing import Any
+
+import pytest
+
+from aidac.connectors import postgresql as postgresql_module
+from aidac.connectors.postgresql import (
+    PostgreSQLAuditConfig,
+    PostgreSQLAuditConnector,
+    PostgreSQLConnectorError,
+)
+
+
+class FakeResult:
+    """Minimal Psycopg result used by connector tests."""
+
+    def __init__(
+        self,
+        rows: list[dict[str, Any]],
+    ) -> None:
+        self.rows = rows
+
+    def fetchall(self) -> list[dict[str, Any]]:
+        """Return all configured rows."""
+
+        return self.rows
+
+    def fetchone(self) -> dict[str, Any] | None:
+        """Return the first configured row."""
+
+        return self.rows[0] if self.rows else None
+
+
+class FakeConnection:
+    """Minimal connection context manager used by tests."""
+
+    def __init__(
+        self,
+        rows: list[dict[str, Any]],
+    ) -> None:
+        self.rows = rows
+        self.executions: list[tuple[object, object]] = []
+
+    def __enter__(self) -> "FakeConnection":
+        """Enter the connection context."""
+
+        return self
+
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        """Exit the connection context."""
+
+    def execute(
+        self,
+        statement: object,
+        parameters: object = None,
+    ) -> FakeResult:
+        """Record an execution and return configured rows."""
+
+        self.executions.append((statement, parameters))
+        return FakeResult(self.rows)
+
+
+def test_empty_dsn_is_rejected() -> None:
+    """The PostgreSQL DSN must not be empty."""
+
+    with pytest.raises(
+        ValueError,
+        match="PostgreSQL DSN cannot be empty",
+    ):
+        PostgreSQLAuditConfig(dsn="   ")
+
+
+def test_invalid_limit_is_rejected() -> None:
+    """The default event limit must be positive."""
+
+    with pytest.raises(
+        ValueError,
+        match="default_limit must be between",
+    ):
+        PostgreSQLAuditConfig(
+            dsn="postgresql://localhost/test",
+            default_limit=0,
+        )
+
+
+def test_normalized_row_becomes_database_event() -> None:
+    """A normalized PostgreSQL row should become DatabaseEvent."""
+
+    event_time = datetime(
+        2026,
+        7,
+        20,
+        12,
+        30,
+        tzinfo=timezone.utc,
+    )
+
+    event = PostgreSQLAuditConnector._row_to_event(
+        {
+            "event_time": event_time,
+            "query_text": "DROP TABLE customers;",
+            "username": "security_test",
+            "database_name": "sales",
+            "client_ip": "192.168.10.20",
+            "duration_ms": 12.5,
+            "rows_affected": 0,
+        }
+    )
+
+    assert event.query == "DROP TABLE customers;"
+    assert event.username == "security_test"
+    assert event.database == "sales"
+    assert event.source_system == "postgresql"
+    assert event.client_ip == "192.168.10.20"
+    assert event.duration_ms == pytest.approx(12.5)
+    assert event.rows_affected == 0
+    assert event.timestamp == event_time
+
+
+def test_missing_required_column_is_rejected() -> None:
+    """Required normalized columns must contain values."""
+
+    with pytest.raises(
+        PostgreSQLConnectorError,
+        match="query_text",
+    ):
+        PostgreSQLAuditConnector._row_to_event(
+            {
+                "event_time": datetime.now(timezone.utc),
+                "query_text": "",
+                "username": "user1",
+                "database_name": "sales",
+                "client_ip": None,
+                "duration_ms": None,
+                "rows_affected": None,
+            }
+        )
+
+
+def test_fetch_events_uses_read_only_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The connector must request a read-only PostgreSQcat > tests/test_postgresql_connector.py <<'PY'
+"""Tests for the AI-DAC PostgreSQL connector."""
+
+from datetime import datetime, timezone
+from types import TracebackType
+from typing import Any
+
+import pytest
+
+from aidac.connectors import postgresql as postgresql_module
+from aidac.connectors.postgresql import (
+    PostgreSQLAuditConfig,
+    PostgreSQLAuditConnector,
+    PostgreSQLConnectorError,
+)
+
+
+class FakeResult:
+    """Minimal Psycopg result used by connector tests."""
+
+    def __init__(
+        self,
+        rows: list[dict[str, Any]],
+    ) -> None:
+        self.rows = rows
+
+    def fetchall(self) -> list[dict[str, Any]]:
+        """Return all configured rows."""
+
+        return self.rows
+
+    def fetchone(self) -> dict[str, Any] | None:
+        """Return the first configured row."""
+
+        return self.rows[0] if self.rows else None
+
+
+class FakeConnection:
+    """Minimal connection context manager used by tests."""
+
+    def __init__(
+        self,
+        rows: list[dict[str, Any]],
+    ) -> None:
+        self.rows = rows
+        self.executions: list[tuple[object, object]] = []
+
+    def __enter__(self) -> "FakeConnection":
+        """Enter the connection context."""
+
+        return self
+
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        """Exit the connection context."""
+
+    def execute(
+        self,
+        statement: object,
+        parameters: object = None,
+    ) -> FakeResult:
+        """Record an execution and return configured rows."""
+
+        self.executions.append((statement, parameters))
+        return FakeResult(self.rows)
+
+
+def test_empty_dsn_is_rejected() -> None:
+    """The PostgreSQL DSN must not be empty."""
+
+    with pytest.raises(
+        ValueError,
+        match="PostgreSQL DSN cannot be empty",
+    ):
+        PostgreSQLAuditConfig(dsn="   ")
+
+
+def test_invalid_limit_is_rejected() -> None:
+    """The default event limit must be positive."""
+
+    with pytest.raises(
+        ValueError,
+        match="default_limit must be between",
+    ):
+        PostgreSQLAuditConfig(
+            dsn="postgresql://localhost/test",
+            default_limit=0,
+        )
+
+
+def test_normalized_row_becomes_database_event() -> None:
+    """A normalized PostgreSQL row should become DatabaseEvent."""
+
+    event_time = datetime(
+        2026,
+        7,
+        20,
+        12,
+        30,
+        tzinfo=timezone.utc,
+    )
+
+    event = PostgreSQLAuditConnector._row_to_event(
+        {
+            "event_time": event_time,
+            "query_text": "DROP TABLE customers;",
+            "username": "security_test",
+            "database_name": "sales",
+            "client_ip": "192.168.10.20",
+            "duration_ms": 12.5,
+            "rows_affected": 0,
+        }
+    )
+
+    assert event.query == "DROP TABLE customers;"
+    assert event.username == "security_test"
+    assert event.database == "sales"
+    assert event.source_system == "postgresql"
+    assert event.client_ip == "192.168.10.20"
+    assert event.duration_ms == pytest.approx(12.5)
+    assert event.rows_affected == 0
+    assert event.timestamp == event_time
+
+
+def test_missing_required_column_is_rejected() -> None:
+    """Required normalized columns must contain values."""
+
+    with pytest.raises(
+        PostgreSQLConnectorError,
+        match="query_text",
+    ):
+        PostgreSQLAuditConnector._row_to_event(
+            {
+                "event_time": datetime.now(timezone.utc),
+                "query_text": "",
+                "username": "user1",
+                "database_name": "sales",
+                "client_ip": None,
+                "duration_ms": None,
+                "rows_affected": None,
+            }
+        )
+
+
+def test_fetch_events_uses_read_only_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The connector must request a read-only PostgreSQL session."""
+
+    captured: dict[str, Any] = {}
+
+    rows = [
+        {
+            "event_time": datetime.now(timezone.utc),
+            "query_text": "SELECT 1;",
+            "username": "health_user",
+            "database_name": "postgres",
+            "client_ip": None,
+            "duration_ms": 1.0,
+            "rows_affected": 1,
+        }
+    ]
+
+    def fake_connect(
+        *args: object,
+        **kwargs: object,
+    ) -> FakeConnection:
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return FakeConnection(rows)
+
+    monkeypatch.setattr(
+        postgresql_module.psycopg,
+        "connect",
+        fake_connect,
+    )
+
+    connector = PostgreSQLAuditConnector(
+        PostgreSQLAuditConfig(
+            dsn="postgresql://readonly@localhost/postgres"
+        )
+    )
+
+    events = connector.fetch_events(limit=10)
+
+    assert len(events) == 1
+    assert events[0].query == "SELECT 1;"
+
+    options = str(captured["kwargs"]["options"])
+    assert "default_transaction_read_only=on" in options
+    assert captured["kwargs"]["autocommit"] is True
+    assert captured["kwargs"]["application_name"] == "aidac-python"
+PYL session."""
+
+    captured: dict[str, Any] = {}
+
+    rows = [
+        {
+            "event_time": datetime.now(timezone.utc),
+            "query_text": "SELECT 1;",
+            "username": "health_user",
+            "database_name": "postgres",
+            "client_ip": None,
+            "duration_ms": 1.0,
+            "rows_affected": 1,
+        }
+    ]
+
+    def fake_connect(
+        *args: object,
+        **kwargs: object,
+    ) -> FakeConnection:
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return FakeConnection(rows)
+
+    monkeypatch.setattr(
+        postgresql_module.psycopg,
+        "connect",
+        fake_connect,
+    )
+
+    connector = PostgreSQLAuditConnector(
+        PostgreSQLAuditConfig(
+            dsn="postgresql://readonly@localhost/postgres"
+        )
+    )
+
+    events = connector.fetch_events(limit=10)
+
+    assert len(events) == 1
+    assert events[0].query == "SELECT 1;"
+
+    options = str(captured["kwargs"]["options"])
+    assert "default_transaction_read_only=on" in options
+    assert captured["kwargs"]["autocommit"] is True
+    assert captured["kwargs"]["application_name"] == "aidac-python"

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aidac-sec"
-version = "0.1.1"
+version = "0.2.0"
 description = "Adaptive and explainable database cybersecurity framework"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -24,11 +24,9 @@ keywords = [
 ]
 
 dependencies = [
-
     "typer>=0.12",
-
-    "rich>=13.0"
-
+    "rich>=13.0",
+    "psycopg[binary]>=3.2,<4",
 ]
 
 [project.optional-dependencies]
