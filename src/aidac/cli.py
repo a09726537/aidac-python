@@ -18,6 +18,18 @@ from rich.console import Console
 from rich.table import Table
 
 from aidac import __version__
+from aidac.alerting import (
+    DEFAULT_ALERT_LOG,
+    DEFAULT_AUDIT_LOG,
+    DEFAULT_WEBHOOK_SECRET_ENV,
+    AlertingError,
+    WebhookSettings,
+    append_alert_records,
+    build_alert_batch,
+    send_signed_webhook,
+    write_audit_event,
+    write_batch_export,
+)
 from aidac.config import (
     DEFAULT_CONFIG_FILE,
     ConfigError,
@@ -342,6 +354,66 @@ def postgres_watch(
             help="File containing the last processed event timestamp.",
         ),
     ] = DEFAULT_STATE_FILE,
+    alert_log: Annotated[
+        Path,
+        typer.Option(
+            "--alert-log",
+            help="Private JSONL file for persistent alerts.",
+        ),
+    ] = DEFAULT_ALERT_LOG,
+    audit_log: Annotated[
+        Path,
+        typer.Option(
+            "--audit-log",
+            help="Private JSONL file for local audit events.",
+        ),
+    ] = DEFAULT_AUDIT_LOG,
+    persist_alerts: Annotated[
+        bool,
+        typer.Option(
+            "--persist-alerts/--no-persist-alerts",
+            help="Persist matching alerts to the JSONL alert log.",
+        ),
+    ] = True,
+    export_directory: Annotated[
+        Path | None,
+        typer.Option(
+            "--export-dir",
+            help="Automatically export every alert batch as JSON.",
+        ),
+    ] = None,
+    webhook_url: Annotated[
+        str | None,
+        typer.Option(
+            "--webhook-url",
+            help=(
+                "HTTPS notification endpoint. The "
+                "AIDAC_WEBHOOK_URL environment variable is used "
+                "when omitted."
+            ),
+        ),
+    ] = None,
+    webhook_secret_env: Annotated[
+        str,
+        typer.Option(
+            "--webhook-secret-env",
+            help="Environment variable containing the HMAC secret.",
+        ),
+    ] = DEFAULT_WEBHOOK_SECRET_ENV,
+    webhook_timeout: Annotated[
+        float,
+        typer.Option(
+            "--webhook-timeout",
+            help="Webhook timeout in seconds.",
+        ),
+    ] = 5.0,
+    webhook_strict: Annotated[
+        bool,
+        typer.Option(
+            "--webhook-strict",
+            help="Stop monitoring when webhook delivery fails.",
+        ),
+    ] = False,
     json_output: Annotated[
         bool,
         typer.Option(
@@ -361,6 +433,9 @@ def postgres_watch(
 
     expanded_config_file = config_file.expanduser()
     expanded_state_file = state_file.expanduser()
+    expanded_alert_log = alert_log.expanduser()
+    expanded_audit_log = audit_log.expanduser()
+    expanded_export_directory = None if export_directory is None else export_directory.expanduser()
 
     try:
         settings = load_settings(expanded_config_file).postgresql
@@ -384,6 +459,25 @@ def postgres_watch(
         if not effective_relation:
             raise ValueError("--relation cannot be empty.")
 
+        effective_webhook_url = (
+            webhook_url.strip()
+            if webhook_url is not None
+            else os.getenv(
+                "AIDAC_WEBHOOK_URL",
+                "",
+            ).strip()
+        )
+
+        webhook_settings = (
+            None
+            if not effective_webhook_url
+            else WebhookSettings(
+                url=effective_webhook_url,
+                secret_env=webhook_secret_env,
+                timeout_seconds=webhook_timeout,
+            )
+        )
+
         since = _read_state(expanded_state_file)
 
         connector = PostgreSQLAuditConnector(
@@ -397,7 +491,21 @@ def postgres_watch(
             )
         )
         connector.health_check()
+
+        write_audit_event(
+            expanded_audit_log,
+            action="postgres_watch_start",
+            status="success",
+            details={
+                "interval_seconds": interval,
+                "minimum_risk": min_risk,
+                "minimum_severity": effective_min_severity,
+                "persistent_alerts": persist_alerts,
+                "webhook_enabled": (webhook_settings is not None),
+            },
+        )
     except (
+        AlertingError,
         ConfigError,
         PostgreSQLConnectorError,
         OSError,
@@ -416,6 +524,9 @@ def postgres_watch(
             f"Minimum risk: {min_risk:.4f} | "
             f"State: {expanded_state_file}[/dim]"
         )
+        console.print(
+            f"[dim]Alert log: {expanded_alert_log} | Audit log: {expanded_audit_log}[/dim]"
+        )
         console.print("[dim]Press Ctrl+C to stop safely.[/dim]")
 
     try:
@@ -427,6 +538,12 @@ def postgres_watch(
                 )
             except PostgreSQLConnectorError as error:
                 console.print(f"[red]PostgreSQL polling failed: {error}[/red]")
+                write_audit_event(
+                    expanded_audit_log,
+                    action="postgres_poll",
+                    status="error",
+                    details={"error": str(error)},
+                )
                 if once:
                     raise typer.Exit(code=1) from error
                 time.sleep(interval)
@@ -440,13 +557,56 @@ def postgres_watch(
             )
 
             if alerts:
+                batch = build_alert_batch(_analysis_records(alerts))
+                batch.update(_json_payload(alerts))
+
+                if persist_alerts:
+                    append_alert_records(
+                        expanded_alert_log,
+                        batch,
+                    )
+
+                export_file = None
+                if expanded_export_directory is not None:
+                    export_file = write_batch_export(
+                        expanded_export_directory,
+                        batch,
+                    )
+
+                webhook_status = None
+                if webhook_settings is not None:
+                    try:
+                        webhook_status = send_signed_webhook(
+                            webhook_settings,
+                            batch,
+                        )
+                    except AlertingError as error:
+                        write_audit_event(
+                            expanded_audit_log,
+                            action="webhook_delivery",
+                            status="error",
+                            details={"error": str(error)},
+                        )
+                        console.print(f"[yellow]Webhook delivery failed: {error}[/yellow]")
+                        if webhook_strict:
+                            raise typer.Exit(code=1) from error
+
+                write_audit_event(
+                    expanded_audit_log,
+                    action="alert_batch",
+                    status="success",
+                    details={
+                        "batch_id": batch["batch_id"],
+                        "alert_count": len(alerts),
+                        "export_file": (None if export_file is None else str(export_file)),
+                        "webhook_status": webhook_status,
+                    },
+                )
+
                 if json_output:
                     typer.echo(
                         json.dumps(
-                            {
-                                "type": "aidac_alert_batch",
-                                **_json_payload(alerts),
-                            },
+                            batch,
                             sort_keys=True,
                             ensure_ascii=False,
                         )
@@ -454,6 +614,8 @@ def postgres_watch(
                 else:
                     console.print("[bold red]High-risk PostgreSQL alert detected[/bold red]")
                     _print_results(alerts, since=since)
+                    if export_file is not None:
+                        console.print(f"[green]Automatic export: {export_file}[/green]")
 
             if events:
                 last_event_time = max(event.timestamp for event in events)
@@ -467,9 +629,25 @@ def postgres_watch(
                 break
 
             time.sleep(interval)
+    except AlertingError as error:
+        console.print(f"[red]Alert processing failed: {error}[/red]")
+        raise typer.Exit(code=1) from error
     except KeyboardInterrupt:
+        write_audit_event(
+            expanded_audit_log,
+            action="postgres_watch_stop",
+            status="success",
+            details={"reason": "keyboard_interrupt"},
+        )
         if not json_output:
             console.print("\n[yellow]Monitoring stopped safely.[/yellow]")
+    else:
+        write_audit_event(
+            expanded_audit_log,
+            action="postgres_watch_stop",
+            status="success",
+            details={"reason": "completed"},
+        )
 
 
 def _resolve_dsn(
