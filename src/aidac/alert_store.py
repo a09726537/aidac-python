@@ -155,7 +155,7 @@ def persist_alert_batch(
 
 
 def load_alerts(path: Path) -> list[dict[str, Any]]:
-    """Replay a v0.6/v0.7 JSONL alert log into current alert states."""
+    """Replay a v0.6+ JSONL alert log into current alert states."""
 
     expanded_path = path.expanduser()
     if not expanded_path.exists():

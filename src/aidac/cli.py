@@ -31,6 +31,7 @@ from aidac.alerting import (
     write_batch_export,
 )
 from aidac.alerts_cli import alerts_app
+from aidac.api_cli import api_app
 from aidac.config import (
     DEFAULT_CONFIG_FILE,
     ConfigError,
@@ -60,6 +61,7 @@ postgres_app = typer.Typer(
 app.add_typer(postgres_app, name="postgres")
 app.add_typer(config_app, name="config")
 app.add_typer(alerts_app, name="alerts")
+app.add_typer(api_app, name="api")
 
 console = Console()
 

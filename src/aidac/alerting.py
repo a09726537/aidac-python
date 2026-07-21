@@ -223,7 +223,7 @@ def send_signed_webhook(
         method="POST",
         headers={
             "Content-Type": "application/json",
-            "User-Agent": "aidac-sec/0.7",
+            "User-Agent": "aidac-sec/0.8",
             "X-AIDAC-Timestamp": timestamp,
             "X-AIDAC-Signature": f"sha256={signature}",
         },

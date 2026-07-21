@@ -186,6 +186,7 @@ verify_and_build() {
     info "Installing deployment tools"
 
     "$PYTHON" -m pip install --quiet --upgrade \
+        -e ".[api]" \
         build \
         twine \
         ruff \
