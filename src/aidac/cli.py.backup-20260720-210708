@@ -159,7 +159,10 @@ def postgres_scan(
         str | None,
         typer.Option(
             "--min-severity",
-            help=("Minimum severity: info, low, medium, high, or critical."),
+            help=(
+                "Minimum severity: info, low, medium, "
+                "high, or critical."
+            ),
         ),
     ] = None,
     use_state: Annotated[
@@ -184,12 +187,20 @@ def postgres_scan(
 
     try:
         settings = load_settings(expanded_config_file).postgresql
-        effective_min_severity = _normalize_min_severity(min_severity)
+        effective_min_severity = _normalize_min_severity(
+            min_severity
+        )
 
         if not 0.0 <= min_risk <= 1.0:
-            raise ValueError("--min-risk must be between 0.0 and 1.0.")
+            raise ValueError(
+                "--min-risk must be between 0.0 and 1.0."
+            )
 
-        expanded_output_file = None if output_file is None else output_file.expanduser()
+        expanded_output_file = (
+            None
+            if output_file is None
+            else output_file.expanduser()
+        )
         if expanded_output_file is not None:
             _export_format(expanded_output_file)
 
@@ -199,7 +210,9 @@ def postgres_scan(
             raise ValueError("--limit must be between 1 and 100000.")
 
         effective_schema = settings.schema if schema is None else schema.strip()
-        effective_relation = settings.relation if relation is None else relation.strip()
+        effective_relation = (
+            settings.relation if relation is None else relation.strip()
+        )
 
         if not effective_schema:
             raise ValueError("--schema cannot be empty.")
@@ -260,13 +273,22 @@ def postgres_scan(
     else:
         console.print(f"[dim]Configuration: {expanded_config_file}[/dim]")
         if min_risk > 0.0 or effective_min_severity is not None:
-            severity_text = effective_min_severity if effective_min_severity is not None else "none"
+            severity_text = (
+                effective_min_severity
+                if effective_min_severity is not None
+                else "none"
+            )
             console.print(
-                f"[dim]Filters: minimum risk={min_risk:.4f}, minimum severity={severity_text}[/dim]"
+                "[dim]Filters: "
+                f"minimum risk={min_risk:.4f}, "
+                f"minimum severity={severity_text}[/dim]"
             )
         _print_results(analyses, since=effective_since)
         if expanded_output_file is not None:
-            console.print(f"[green]Export written: {expanded_output_file}[/green]")
+            console.print(
+                f"[green]Export written: "
+                f"{expanded_output_file}[/green]"
+            )
 
     if use_state and events:
         last_event_time = max(event.timestamp for event in events)
@@ -274,6 +296,7 @@ def postgres_scan(
 
         if not json_output:
             console.print(f"[dim]State updated: {expanded_state_file}[/dim]")
+
 
 
 @postgres_app.command("watch")
@@ -304,7 +327,10 @@ def postgres_watch(
         str | None,
         typer.Option(
             "--min-severity",
-            help=("Optional minimum severity: info, low, medium, high, or critical."),
+            help=(
+                "Optional minimum severity: info, low, medium, "
+                "high, or critical."
+            ),
         ),
     ] = None,
     schema: Annotated[
@@ -364,20 +390,36 @@ def postgres_watch(
 
     try:
         settings = load_settings(expanded_config_file).postgresql
-        effective_min_severity = _normalize_min_severity(min_severity)
+        effective_min_severity = _normalize_min_severity(
+            min_severity
+        )
 
         if not 1.0 <= interval <= 3_600.0:
-            raise ValueError("--interval must be between 1 and 3600 seconds.")
+            raise ValueError(
+                "--interval must be between 1 and 3600 seconds."
+            )
 
         if not 0.0 <= min_risk <= 1.0:
-            raise ValueError("--min-risk must be between 0.0 and 1.0.")
+            raise ValueError(
+                "--min-risk must be between 0.0 and 1.0."
+            )
 
-        effective_limit = settings.default_limit if limit is None else limit
+        effective_limit = (
+            settings.default_limit if limit is None else limit
+        )
         if not 1 <= effective_limit <= 100_000:
-            raise ValueError("--limit must be between 1 and 100000.")
+            raise ValueError(
+                "--limit must be between 1 and 100000."
+            )
 
-        effective_schema = settings.schema if schema is None else schema.strip()
-        effective_relation = settings.relation if relation is None else relation.strip()
+        effective_schema = (
+            settings.schema if schema is None else schema.strip()
+        )
+        effective_relation = (
+            settings.relation
+            if relation is None
+            else relation.strip()
+        )
 
         if not effective_schema:
             raise ValueError("--schema cannot be empty.")
@@ -392,8 +434,12 @@ def postgres_watch(
                 schema=effective_schema,
                 relation=effective_relation,
                 default_limit=effective_limit,
-                connect_timeout_seconds=(settings.connect_timeout_seconds),
-                statement_timeout_ms=(settings.statement_timeout_ms),
+                connect_timeout_seconds=(
+                    settings.connect_timeout_seconds
+                ),
+                statement_timeout_ms=(
+                    settings.statement_timeout_ms
+                ),
             )
         )
         connector.health_check()
@@ -404,19 +450,25 @@ def postgres_watch(
         ValueError,
         json.JSONDecodeError,
     ) as error:
-        console.print(f"[red]PostgreSQL watch failed: {error}[/red]")
+        console.print(
+            f"[red]PostgreSQL watch failed: {error}[/red]"
+        )
         raise typer.Exit(code=1) from error
 
     engine = AIDAC()
 
     if not json_output:
-        console.print("[green]AI-DAC PostgreSQL monitoring started.[/green]")
+        console.print(
+            "[green]AI-DAC PostgreSQL monitoring started.[/green]"
+        )
         console.print(
             f"[dim]Interval: {interval:g}s | "
             f"Minimum risk: {min_risk:.4f} | "
             f"State: {expanded_state_file}[/dim]"
         )
-        console.print("[dim]Press Ctrl+C to stop safely.[/dim]")
+        console.print(
+            "[dim]Press Ctrl+C to stop safely.[/dim]"
+        )
 
     try:
         while True:
@@ -426,13 +478,18 @@ def postgres_watch(
                     limit=effective_limit,
                 )
             except PostgreSQLConnectorError as error:
-                console.print(f"[red]PostgreSQL polling failed: {error}[/red]")
+                console.print(
+                    f"[red]PostgreSQL polling failed: {error}[/red]"
+                )
                 if once:
                     raise typer.Exit(code=1) from error
                 time.sleep(interval)
                 continue
 
-            analyses = [(event, engine.analyze(event)) for event in events]
+            analyses = [
+                (event, engine.analyze(event))
+                for event in events
+            ]
             alerts = _filter_analyses(
                 analyses,
                 min_risk=min_risk,
@@ -452,11 +509,16 @@ def postgres_watch(
                         )
                     )
                 else:
-                    console.print("[bold red]High-risk PostgreSQL alert detected[/bold red]")
+                    console.print(
+                        "[bold red]High-risk PostgreSQL "
+                        "alert detected[/bold red]"
+                    )
                     _print_results(alerts, since=since)
 
             if events:
-                last_event_time = max(event.timestamp for event in events)
+                last_event_time = max(
+                    event.timestamp for event in events
+                )
                 _write_state(
                     expanded_state_file,
                     last_event_time,
@@ -469,8 +531,9 @@ def postgres_watch(
             time.sleep(interval)
     except KeyboardInterrupt:
         if not json_output:
-            console.print("\n[yellow]Monitoring stopped safely.[/yellow]")
-
+            console.print(
+                "\n[yellow]Monitoring stopped safely.[/yellow]"
+            )
 
 def _resolve_dsn(
     cli_dsn: str | None,
@@ -583,7 +646,10 @@ def _normalize_min_severity(value: str | None) -> str | None:
     normalized = value.strip().casefold()
     if normalized not in _SEVERITY_RANK:
         allowed = ", ".join(_SEVERITY_RANK)
-        raise ValueError(f"--min-severity must be one of: {allowed}.")
+        raise ValueError(
+            "--min-severity must be one of: "
+            f"{allowed}."
+        )
 
     return normalized
 
@@ -596,7 +662,11 @@ def _filter_analyses(
 ) -> list[tuple[DatabaseEvent, SecurityDecision]]:
     """Filter analyses by risk score and severity."""
 
-    severity_threshold = -1 if min_severity is None else _SEVERITY_RANK[min_severity]
+    severity_threshold = (
+        -1
+        if min_severity is None
+        else _SEVERITY_RANK[min_severity]
+    )
 
     return [
         (event, decision)
@@ -640,7 +710,9 @@ def _export_format(output_file: Path) -> str:
     if suffix == ".json":
         return "json"
 
-    raise ValueError("--output must end with .csv or .json.")
+    raise ValueError(
+        "--output must end with .csv or .json."
+    )
 
 
 def _write_export(
@@ -651,7 +723,9 @@ def _write_export(
 
     export_format = _export_format(output_file)
     output_file.parent.mkdir(parents=True, exist_ok=True)
-    temporary_file = output_file.with_suffix(output_file.suffix + ".tmp")
+    temporary_file = output_file.with_suffix(
+        output_file.suffix + ".tmp"
+    )
 
     if export_format == "json":
         temporary_file.write_text(
@@ -692,18 +766,21 @@ def _write_export(
     temporary_file.replace(output_file)
     output_file.chmod(0o600)
 
-
 def _build_summary(
     analyses: list[tuple[DatabaseEvent, SecurityDecision]],
 ) -> dict[str, Any]:
     """Build aggregate scan statistics."""
 
-    severity_counts: Counter[str] = Counter(decision.severity.value for _, decision in analyses)
+    severity_counts: Counter[str] = Counter(
+        decision.severity.value for _, decision in analyses
+    )
     risk_scores = [decision.risk_score for _, decision in analyses]
 
     return {
         "events_analyzed": len(analyses),
-        "average_risk": (sum(risk_scores) / len(risk_scores) if risk_scores else 0.0),
+        "average_risk": (
+            sum(risk_scores) / len(risk_scores) if risk_scores else 0.0
+        ),
         "maximum_risk": max(risk_scores) if risk_scores else 0.0,
         "severity_counts": dict(severity_counts),
     }
