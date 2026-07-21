@@ -51,3 +51,5 @@ Thumbs.db
 .env.*
 *.token
 publish.env
+backups/
+*.backup-*
