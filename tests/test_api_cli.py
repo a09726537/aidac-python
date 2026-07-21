@@ -61,3 +61,19 @@ def test_remote_binding_requires_explicit_tls(tmp_path: Path) -> None:
 
     assert selected_certificate == certificate
     assert selected_key == private_key
+
+
+def test_dashboard_flag_requires_separate_token(monkeypatch: object) -> None:
+    """Enabling the dashboard should require a separate strong dashboard token."""
+
+    monkeypatch.setenv(  # type: ignore[attr-defined]
+        "AIDAC_API_TOKEN",
+        "api-token-0123456789-abcdefghijklmnopqrstuvwxyz",
+    )
+    monkeypatch.delenv("AIDAC_DASHBOARD_TOKEN", raising=False)  # type: ignore[attr-defined]
+
+    result = runner.invoke(app, ["api", "serve", "--dashboard"])
+
+    assert result.exit_code == 1
+    assert "AIDAC_DASHBOARD_TOKEN" in result.output
+    assert "at least 32 characters" in result.output

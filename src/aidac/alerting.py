@@ -15,6 +15,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
+from aidac import __version__
 from aidac.alert_store import enrich_alert_record
 
 DEFAULT_ALERT_LOG = Path("~/.local/state/aidac/alerts.jsonl")
@@ -223,7 +224,7 @@ def send_signed_webhook(
         method="POST",
         headers={
             "Content-Type": "application/json",
-            "User-Agent": "aidac-sec/0.8",
+            "User-Agent": f"aidac-sec/{__version__}",
             "X-AIDAC-Timestamp": timestamp,
             "X-AIDAC-Signature": f"sha256={signature}",
         },

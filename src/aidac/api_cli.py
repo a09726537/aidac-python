@@ -14,7 +14,10 @@ from rich.console import Console
 from aidac.alerting import DEFAULT_ALERT_LOG, DEFAULT_AUDIT_LOG
 
 DEFAULT_API_TOKEN_ENV = "AIDAC_API_TOKEN"
+DEFAULT_DASHBOARD_TOKEN_ENV = "AIDAC_DASHBOARD_TOKEN"
+DEFAULT_DASHBOARD_SESSION_MINUTES = 480
 _MINIMUM_API_TOKEN_LENGTH = 32
+_MINIMUM_DASHBOARD_TOKEN_LENGTH = 32
 _ALLOWED_LOG_LEVELS = {"critical", "error", "warning", "info", "debug", "trace"}
 _ENVIRONMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -62,6 +65,27 @@ def api_serve(
         Path | None,
         typer.Option("--ssl-keyfile", help="TLS private-key file for remote access."),
     ] = None,
+    dashboard: Annotated[
+        bool,
+        typer.Option(
+            "--dashboard/--no-dashboard",
+            help="Serve the authenticated web dashboard.",
+        ),
+    ] = False,
+    dashboard_token_env: Annotated[
+        str,
+        typer.Option(
+            "--dashboard-token-env",
+            help="Environment variable containing the separate dashboard token.",
+        ),
+    ] = DEFAULT_DASHBOARD_TOKEN_ENV,
+    dashboard_session_minutes: Annotated[
+        int,
+        typer.Option(
+            "--dashboard-session-minutes",
+            help="Dashboard session duration in minutes.",
+        ),
+    ] = DEFAULT_DASHBOARD_SESSION_MINUTES,
     log_level: Annotated[
         str,
         typer.Option("--log-level", help="Uvicorn log level."),
@@ -77,8 +101,14 @@ def api_serve(
         normalized_host = _validate_host(host)
         normalized_token_env = _validate_token_environment(token_env)
         normalized_level = _validate_log_level(log_level)
+        normalized_dashboard_token_env = _validate_token_environment(dashboard_token_env)
         _validate_port(port)
         _validate_token(normalized_token_env)
+        _validate_dashboard(
+            enabled=dashboard,
+            token_env=normalized_dashboard_token_env,
+            session_minutes=dashboard_session_minutes,
+        )
         certificate, private_key = _validate_transport(
             host=normalized_host,
             allow_remote=allow_remote,
@@ -103,11 +133,16 @@ def api_serve(
         alert_log=alert_log,
         audit_log=audit_log,
         token_env=normalized_token_env,
+        dashboard_enabled=dashboard,
+        dashboard_token_env=normalized_dashboard_token_env,
+        dashboard_session_minutes=dashboard_session_minutes,
     )
     scheme = "https" if certificate is not None else "http"
     display_host = "localhost" if normalized_host in {"127.0.0.1", "::1"} else normalized_host
     console.print(f"[green]AI-DAC API listening on {scheme}://{display_host}:{port}[/green]")
     console.print(f"[dim]OpenAPI documentation: {scheme}://{display_host}:{port}/docs[/dim]")
+    if dashboard:
+        console.print(f"[dim]Web dashboard: {scheme}://{display_host}:{port}/dashboard[/dim]")
     console.print("[dim]Press Ctrl+C to stop.[/dim]")
 
     uvicorn.run(
@@ -150,6 +185,21 @@ def _validate_token(token_env: str) -> None:
         raise ValueError(
             f"{token_env} must contain a random API token of at least "
             f"{_MINIMUM_API_TOKEN_LENGTH} characters."
+        )
+
+
+def _validate_dashboard(
+    *,
+    enabled: bool,
+    token_env: str,
+    session_minutes: int,
+) -> None:
+    if not 5 <= session_minutes <= 1_440:
+        raise ValueError("--dashboard-session-minutes must be between 5 and 1440.")
+    if enabled and len(os.getenv(token_env, "")) < _MINIMUM_DASHBOARD_TOKEN_LENGTH:
+        raise ValueError(
+            f"{token_env} must contain a random dashboard token of at least "
+            f"{_MINIMUM_DASHBOARD_TOKEN_LENGTH} characters."
         )
 
 

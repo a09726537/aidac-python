@@ -29,6 +29,11 @@ from aidac.alerting import (
     AlertingError,
     write_audit_event,
 )
+from aidac.dashboard import (
+    DEFAULT_DASHBOARD_SESSION_MINUTES,
+    DEFAULT_DASHBOARD_TOKEN_ENV,
+    install_dashboard_routes,
+)
 
 DEFAULT_API_TOKEN_ENV = "AIDAC_API_TOKEN"
 MINIMUM_API_TOKEN_LENGTH = 32
@@ -77,6 +82,9 @@ def create_app(
     alert_log: Path = DEFAULT_ALERT_LOG,
     audit_log: Path = DEFAULT_AUDIT_LOG,
     token_env: str = DEFAULT_API_TOKEN_ENV,
+    dashboard_enabled: bool = False,
+    dashboard_token_env: str = DEFAULT_DASHBOARD_TOKEN_ENV,
+    dashboard_session_minutes: int = DEFAULT_DASHBOARD_SESSION_MINUTES,
 ) -> FastAPI:
     """Create a configured AI-DAC FastAPI application."""
 
@@ -164,11 +172,14 @@ def create_app(
 
     @app.get("/", include_in_schema=False)
     def root() -> dict[str, str]:
-        return {
+        response = {
             "service": "AI-DAC Alert API",
             "version": __version__,
             "documentation": "/docs",
         }
+        if dashboard_enabled:
+            response["dashboard"] = "/dashboard"
+        return response
 
     @app.get("/health/live", response_model=HealthResponse, tags=["health"])
     def health_live() -> HealthResponse:
@@ -303,5 +314,15 @@ def create_app(
                 },
             )
         return alert
+
+    if dashboard_enabled:
+        install_dashboard_routes(
+            app,
+            alert_log=expanded_alert_log,
+            audit_log=expanded_audit_log,
+            token_env=dashboard_token_env,
+            session_minutes=dashboard_session_minutes,
+            store_lock=store_lock,
+        )
 
     return app
