@@ -1,22 +1,24 @@
 # AI-DAC Python Library
 
 AI-DAC is an adaptive and explainable database-cybersecurity framework for detecting,
-monitoring, and managing potentially dangerous SQL activity.
+monitoring, storing, and managing potentially dangerous SQL activity.
 
-## Features
+Version **1.0.0** establishes a stable storage, API, audit, backup, and operational interface
+while preserving compatibility with the JSONL lifecycle logs produced by AI-DAC 0.6–0.9.
 
-- SQL security-event normalization
-- Rule-based anomaly detection
-- Risk scoring and severity classification
-- Human-readable explanations
-- Read-only PostgreSQL audit collection
-- Continuous PostgreSQL monitoring
-- Private JSONL alert and audit logs
-- Signed HTTPS webhook notifications
-- Alert deduplication and lifecycle management
-- Authenticated REST API and OpenAPI documentation
-- Server-rendered security-operations dashboard
-- Python API and command-line interface
+## Main capabilities
+
+- SQL event normalization, anomaly detection, risk scoring, and explanations
+- Read-only PostgreSQL audit collection and continuous monitoring
+- SQLite alert store with schema migrations and transactional lifecycle updates
+- Import compatibility for legacy JSONL alert logs
+- Alert deduplication with `new`, `acknowledged`, and `resolved` states
+- Tamper-evident JSONL audit log with sequence numbers and SHA-256 hash chaining
+- Role-aware REST API with `viewer`, `analyst`, and `admin` tokens
+- Pagination, filtering, search, and per-token API rate limiting
+- Authenticated server-rendered security-operations dashboard
+- Consistent alert-store backup and validated restore commands
+- Local diagnostic and production-configuration commands
 
 ## Installation
 
@@ -30,13 +32,12 @@ Install the REST API and dashboard dependencies:
 python -m pip install "aidac-sec[api]"
 ```
 
-## Python API
+## Basic analysis
 
 ```python
 from aidac import AIDAC, DatabaseEvent
 
 engine = AIDAC()
-
 event = DatabaseEvent(
     query="DROP DATABASE production;",
     username="administrator",
@@ -45,13 +46,10 @@ event = DatabaseEvent(
 )
 
 decision = engine.analyze(event)
-
 print(decision.risk_score)
 print(decision.severity.value)
 print(decision.recommended_action)
 ```
-
-## Command line
 
 ```bash
 aidac version
@@ -60,99 +58,159 @@ aidac postgres scan --min-risk 0.5
 aidac postgres watch --interval 5 --min-severity high
 ```
 
-## Alert lifecycle
+## SQLite alert storage
 
-AI-DAC assigns deterministic alert identifiers, deduplicates repeated matching database
-events, and maintains the states `new`, `acknowledged`, and `resolved`.
+AI-DAC 1.0 uses this store by default:
+
+```text
+~/.local/state/aidac/alerts.db
+```
+
+Initialize or inspect it:
+
+```bash
+aidac storage init
+aidac storage info
+aidac storage info --json
+```
+
+### Upgrade from AI-DAC 0.6–0.9
+
+Import the previous JSONL lifecycle log:
+
+```bash
+aidac storage migrate-jsonl \
+  --source ~/.local/state/aidac/alerts.jsonl \
+  --destination ~/.local/state/aidac/alerts.db
+```
+
+The JSONL backend remains supported when a path ending in `.jsonl` is supplied explicitly.
+
+## Alert lifecycle and search
 
 ```bash
 aidac alerts list
-aidac alerts list --status new --json
+aidac alerts list --status new --severity critical --min-risk 0.8
+aidac alerts list --search production --limit 25 --offset 0 --json
 aidac alerts show alrt_IDENTIFIER
 aidac alerts ack alrt_IDENTIFIER --actor analyst --note "Review started"
 aidac alerts resolve alrt_IDENTIFIER --actor analyst --note "Incident closed"
 aidac alerts prune --older-than-days 90 --status resolved --yes
 ```
 
-The alert log remains compatible with JSONL records created by AI-DAC 0.6.0 and later.
-Files created by AI-DAC use private permissions where the operating system supports POSIX
-permissions.
+## Backup and restore
 
-## Authenticated REST API
-
-Create a random bearer token and start the API on the local machine:
+Create a consistent backup:
 
 ```bash
-export AIDAC_API_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
-aidac api serve
+aidac storage backup
 ```
 
-The interactive OpenAPI documentation is available at `http://127.0.0.1:8000/docs`.
-Alert endpoints require the header `Authorization: Bearer <token>`.
+Select an explicit output path:
 
 ```bash
-curl -H "Authorization: Bearer $AIDAC_API_TOKEN" \
-  http://127.0.0.1:8000/api/v1/alerts
+aidac storage backup --output ~/Backups/aidac-alerts.db
 ```
 
-Available routes include:
+Restore after validation:
+
+```bash
+aidac storage restore ~/Backups/aidac-alerts.db --yes
+```
+
+## Tamper-evident audit log
+
+Each new audit record contains a sequence number, the previous record hash, and its own
+SHA-256 record hash. Legacy records remain readable and new records chain forward from them.
+
+```bash
+aidac audit verify
+aidac audit verify --json
+```
+
+## Role-aware REST API
+
+Create separate random tokens:
+
+```bash
+export AIDAC_API_VIEWER_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+export AIDAC_API_ANALYST_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+export AIDAC_API_ADMIN_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+```
+
+The legacy `AIDAC_API_TOKEN` variable remains accepted as an administrator token.
+
+Start the local service:
+
+```bash
+aidac api serve --rate-limit 120
+```
+
+Role permissions:
+
+- `viewer`: list, search, summarize, and inspect alerts
+- `analyst`: viewer permissions plus acknowledge and resolve
+- `admin`: analyst permissions plus storage and audit diagnostics
+
+Useful routes:
 
 - `GET /health/live`
 - `GET /health/ready`
-- `GET /api/v1/alerts`
+- `GET /api/v1/alerts?limit=50&offset=0&q=production`
 - `GET /api/v1/alerts/summary`
 - `GET /api/v1/alerts/{alert_id}`
 - `POST /api/v1/alerts/{alert_id}/ack`
 - `POST /api/v1/alerts/{alert_id}/resolve`
+- `GET /api/v1/system/storage`
+- `GET /api/v1/system/audit/verify`
+
+OpenAPI documentation is available at `http://127.0.0.1:8000/docs`.
 
 ## Web dashboard
 
-AI-DAC 0.9.0 adds a server-rendered dashboard with:
-
-- current alert totals and lifecycle statistics;
-- severity-distribution visualization;
-- status, severity, risk, text, and result-limit filters;
-- alert detail pages;
-- acknowledgement and resolution forms;
-- configurable automatic refresh;
-- audit logging for dashboard lifecycle actions.
-
-The dashboard uses a separate random token. The REST API bearer token is not placed in
-browser JavaScript, browser storage, page URLs, or HTML. After sign-in, the browser receives
-an opaque, signed, time-limited, `HttpOnly` session cookie. Mutation forms use CSRF tokens.
-
-Create both tokens and start the local API with the dashboard enabled:
+Create a separate dashboard token and enable the dashboard:
 
 ```bash
-export AIDAC_API_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
 export AIDAC_DASHBOARD_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
 aidac api serve --dashboard
 ```
 
-Open:
+Open `http://127.0.0.1:8000/dashboard`. The API bearer tokens are never placed in browser
+JavaScript, local storage, page URLs, or HTML.
 
-```text
-http://127.0.0.1:8000/dashboard
-```
+## Production configuration
 
-The default dashboard session duration is eight hours. It can be changed from 5 to 1440
-minutes:
+Create a hardened configuration template without secrets:
 
 ```bash
-aidac api serve --dashboard --dashboard-session-minutes 120
+aidac config production --path ./aidac.production.toml
 ```
 
-The dashboard is disabled unless `--dashboard` is supplied. The listener remains
-loopback-only by default. Binding to a non-loopback address requires explicit
-`--allow-remote` together with a TLS certificate and private key. CORS is not enabled by
-default.
+Inspect the effective configuration:
 
-## Safety
+```bash
+aidac config show --json
+```
 
-AI-DAC operates in observation mode. It does not automatically modify or block database
-activity. Passwords, complete DSNs, API tokens, dashboard tokens, and webhook secrets should
-be supplied through environment variables rather than stored in the repository or TOML
-configuration.
+The template covers PostgreSQL, storage, API binding, rate limiting, and dashboard session
+settings. Passwords and tokens must remain in environment variables or a dedicated secret
+manager.
+
+## Diagnostics
+
+```bash
+aidac doctor
+aidac doctor --json
+```
+
+The diagnostic command checks configuration parsing, alert-store integrity, audit-chain
+integrity, private file permissions, and API token availability in the current shell.
+
+## Network safety
+
+The API listens on loopback by default. Binding to a non-loopback address requires both
+`--allow-remote` and TLS certificate/key files. CORS is not enabled by default. AI-DAC
+operates in observation mode and does not automatically modify or block database activity.
 
 ## License
 

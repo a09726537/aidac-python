@@ -7,6 +7,7 @@ import hmac
 import json
 import os
 import secrets
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,15 +17,31 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from aidac import __version__
-from aidac.alert_store import enrich_alert_record
+from aidac.alert_store import enrich_alert_record, is_sqlite_store, persist_alert_batch
 
-DEFAULT_ALERT_LOG = Path("~/.local/state/aidac/alerts.jsonl")
+DEFAULT_ALERT_LOG = Path("~/.local/state/aidac/alerts.db")
 DEFAULT_AUDIT_LOG = Path("~/.local/state/aidac/audit.jsonl")
 DEFAULT_WEBHOOK_SECRET_ENV = "AIDAC_WEBHOOK_SECRET"
 
 
 class AlertingError(RuntimeError):
     """Raised when an alert cannot be persisted or delivered."""
+
+
+@dataclass(frozen=True, slots=True)
+class AuditVerification:
+    """Result of verifying the local audit hash chain."""
+
+    valid: bool
+    records: int
+    chained_records: int
+    legacy_records: int
+    failure_line: int | None = None
+    message: str = "ok"
+
+
+_AUDIT_LOCK = threading.RLock()
+_AUDIT_GENESIS_HASH = "0" * 64
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +118,10 @@ def append_alert_records(
     """Append one JSONL record for every alert."""
 
     expanded_path = path.expanduser()
+    if is_sqlite_store(expanded_path):
+        persist_alert_batch(expanded_path, batch)
+        return expanded_path
+
     alerts = batch.get("alerts", [])
 
     if not isinstance(alerts, list):
@@ -132,20 +153,168 @@ def write_audit_event(
     status: str,
     details: dict[str, Any] | None = None,
 ) -> Path:
-    """Append one structured local audit event."""
+    """Append one structured audit event linked to the previous record hash."""
 
     expanded_path = path.expanduser()
+    normalized_action = action.strip()
+    normalized_status = status.strip()
+    if not normalized_action or not normalized_status:
+        raise AlertingError("Audit action and status cannot be empty.")
 
-    record = {
-        "type": "aidac_audit_event",
-        "timestamp": utc_timestamp(),
-        "action": action,
-        "status": status,
-        "details": details or {},
-    }
-
-    _append_jsonl(expanded_path, [record])
+    with _AUDIT_LOCK:
+        sequence, previous_hash = _audit_tail(expanded_path)
+        record: dict[str, Any] = {
+            "type": "aidac_audit_event",
+            "sequence": sequence + 1,
+            "timestamp": utc_timestamp(),
+            "action": normalized_action,
+            "status": normalized_status,
+            "details": details or {},
+            "previous_hash": previous_hash,
+        }
+        record["record_hash"] = _audit_record_hash(record)
+        _append_jsonl(expanded_path, [record])
     return expanded_path
+
+
+def verify_audit_log(path: Path) -> AuditVerification:
+    """Verify JSON syntax, sequence numbers and the tamper-evident audit chain."""
+
+    expanded_path = path.expanduser()
+    if not expanded_path.exists():
+        return AuditVerification(
+            valid=True,
+            records=0,
+            chained_records=0,
+            legacy_records=0,
+        )
+
+    previous_hash = _AUDIT_GENESIS_HASH
+    expected_sequence = 1
+    chained_records = 0
+    legacy_records = 0
+
+    try:
+        with expanded_path.open("r", encoding="utf-8") as stream:
+            for line_number, line in enumerate(stream, start=1):
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                try:
+                    payload = json.loads(stripped)
+                except json.JSONDecodeError:
+                    return AuditVerification(
+                        valid=False,
+                        records=line_number,
+                        chained_records=chained_records,
+                        legacy_records=legacy_records,
+                        failure_line=line_number,
+                        message="invalid_json",
+                    )
+                if not isinstance(payload, dict):
+                    return AuditVerification(
+                        valid=False,
+                        records=line_number,
+                        chained_records=chained_records,
+                        legacy_records=legacy_records,
+                        failure_line=line_number,
+                        message="record_is_not_an_object",
+                    )
+
+                record_hash = payload.get("record_hash")
+                supplied_previous = payload.get("previous_hash")
+                supplied_sequence = payload.get("sequence")
+                if not isinstance(record_hash, str):
+                    legacy_records += 1
+                    previous_hash = _sha256_json(payload)
+                    expected_sequence += 1
+                    continue
+
+                if supplied_sequence != expected_sequence:
+                    return AuditVerification(
+                        valid=False,
+                        records=line_number,
+                        chained_records=chained_records,
+                        legacy_records=legacy_records,
+                        failure_line=line_number,
+                        message="invalid_sequence",
+                    )
+                if supplied_previous != previous_hash:
+                    return AuditVerification(
+                        valid=False,
+                        records=line_number,
+                        chained_records=chained_records,
+                        legacy_records=legacy_records,
+                        failure_line=line_number,
+                        message="previous_hash_mismatch",
+                    )
+                if not hmac.compare_digest(record_hash, _audit_record_hash(payload)):
+                    return AuditVerification(
+                        valid=False,
+                        records=line_number,
+                        chained_records=chained_records,
+                        legacy_records=legacy_records,
+                        failure_line=line_number,
+                        message="record_hash_mismatch",
+                    )
+
+                chained_records += 1
+                previous_hash = record_hash
+                expected_sequence += 1
+    except OSError as error:
+        raise AlertingError(f"Unable to read audit log: {expanded_path}") from error
+
+    total = chained_records + legacy_records
+    return AuditVerification(
+        valid=True,
+        records=total,
+        chained_records=chained_records,
+        legacy_records=legacy_records,
+    )
+
+
+def _audit_tail(path: Path) -> tuple[int, str]:
+    if not path.exists():
+        return 0, _AUDIT_GENESIS_HASH
+
+    last_payload: dict[str, Any] | None = None
+    record_count = 0
+    try:
+        with path.open("r", encoding="utf-8") as stream:
+            for line in stream:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                record_count += 1
+                try:
+                    payload = json.loads(stripped)
+                except json.JSONDecodeError as error:
+                    raise AlertingError(f"Invalid JSON in audit log: {path}") from error
+                if not isinstance(payload, dict):
+                    raise AlertingError(f"Audit records must be JSON objects: {path}")
+                last_payload = payload
+    except OSError as error:
+        raise AlertingError(f"Unable to read audit log: {path}") from error
+
+    if last_payload is None:
+        return 0, _AUDIT_GENESIS_HASH
+    last_hash = last_payload.get("record_hash")
+    return record_count, last_hash if isinstance(last_hash, str) else _sha256_json(last_payload)
+
+
+def _audit_record_hash(record: dict[str, Any]) -> str:
+    canonical = {key: value for key, value in record.items() if key != "record_hash"}
+    return _sha256_json(canonical)
+
+
+def _sha256_json(payload: dict[str, Any]) -> str:
+    canonical = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
 
 
 def write_batch_export(

@@ -14,8 +14,12 @@ from rich.console import Console
 from aidac.alerting import DEFAULT_ALERT_LOG, DEFAULT_AUDIT_LOG
 
 DEFAULT_API_TOKEN_ENV = "AIDAC_API_TOKEN"
+DEFAULT_VIEWER_TOKEN_ENV = "AIDAC_API_VIEWER_TOKEN"
+DEFAULT_ANALYST_TOKEN_ENV = "AIDAC_API_ANALYST_TOKEN"
+DEFAULT_ADMIN_TOKEN_ENV = "AIDAC_API_ADMIN_TOKEN"
 DEFAULT_DASHBOARD_TOKEN_ENV = "AIDAC_DASHBOARD_TOKEN"
 DEFAULT_DASHBOARD_SESSION_MINUTES = 480
+DEFAULT_RATE_LIMIT_PER_MINUTE = 120
 _MINIMUM_API_TOKEN_LENGTH = 32
 _MINIMUM_DASHBOARD_TOKEN_LENGTH = 32
 _ALLOWED_LOG_LEVELS = {"critical", "error", "warning", "info", "debug", "trace"}
@@ -40,16 +44,35 @@ def api_serve(
     ] = 8000,
     alert_log: Annotated[
         Path,
-        typer.Option("--alert-log", help="Private JSONL alert lifecycle log."),
+        typer.Option("--alert-log", help="SQLite store or legacy JSONL alert log."),
     ] = DEFAULT_ALERT_LOG,
     audit_log: Annotated[
         Path,
-        typer.Option("--audit-log", help="Private JSONL API audit log."),
+        typer.Option("--audit-log", help="Private chained JSONL API audit log."),
     ] = DEFAULT_AUDIT_LOG,
     token_env: Annotated[
         str,
-        typer.Option("--token-env", help="Environment variable containing the API token."),
+        typer.Option(
+            "--token-env",
+            help="Backward-compatible admin-token environment variable.",
+        ),
     ] = DEFAULT_API_TOKEN_ENV,
+    viewer_token_env: Annotated[
+        str,
+        typer.Option("--viewer-token-env", help="Viewer-token environment variable."),
+    ] = DEFAULT_VIEWER_TOKEN_ENV,
+    analyst_token_env: Annotated[
+        str,
+        typer.Option("--analyst-token-env", help="Analyst-token environment variable."),
+    ] = DEFAULT_ANALYST_TOKEN_ENV,
+    admin_token_env: Annotated[
+        str,
+        typer.Option("--admin-token-env", help="Admin-token environment variable."),
+    ] = DEFAULT_ADMIN_TOKEN_ENV,
+    rate_limit: Annotated[
+        int,
+        typer.Option("--rate-limit", help="Requests permitted per token and client each minute."),
+    ] = DEFAULT_RATE_LIMIT_PER_MINUTE,
     allow_remote: Annotated[
         bool,
         typer.Option(
@@ -95,15 +118,24 @@ def api_serve(
         typer.Option("--access-log/--no-access-log", help="Enable HTTP access logs."),
     ] = False,
 ) -> None:
-    """Serve the local alert lifecycle API."""
+    """Serve the alert lifecycle API."""
 
     try:
         normalized_host = _validate_host(host)
         normalized_token_env = _validate_token_environment(token_env)
+        normalized_viewer_env = _validate_token_environment(viewer_token_env)
+        normalized_analyst_env = _validate_token_environment(analyst_token_env)
+        normalized_admin_env = _validate_token_environment(admin_token_env)
         normalized_level = _validate_log_level(log_level)
         normalized_dashboard_token_env = _validate_token_environment(dashboard_token_env)
         _validate_port(port)
-        _validate_token(normalized_token_env)
+        _validate_rate_limit(rate_limit)
+        _validate_tokens(
+            normalized_token_env,
+            normalized_viewer_env,
+            normalized_analyst_env,
+            normalized_admin_env,
+        )
         _validate_dashboard(
             enabled=dashboard,
             token_env=normalized_dashboard_token_env,
@@ -133,6 +165,10 @@ def api_serve(
         alert_log=alert_log,
         audit_log=audit_log,
         token_env=normalized_token_env,
+        viewer_token_env=normalized_viewer_env,
+        analyst_token_env=normalized_analyst_env,
+        admin_token_env=normalized_admin_env,
+        rate_limit_per_minute=rate_limit,
         dashboard_enabled=dashboard,
         dashboard_token_env=normalized_dashboard_token_env,
         dashboard_session_minutes=dashboard_session_minutes,
@@ -151,8 +187,8 @@ def api_serve(
         port=port,
         log_level=normalized_level,
         access_log=access_log,
-        ssl_certfile=(None if certificate is None else str(certificate)),
-        ssl_keyfile=(None if private_key is None else str(private_key)),
+        ssl_certfile=None if certificate is None else str(certificate),
+        ssl_keyfile=None if private_key is None else str(private_key),
         proxy_headers=False,
     )
 
@@ -173,27 +209,31 @@ def _validate_port(port: int) -> None:
         raise ValueError("--port must be between 1 and 65535.")
 
 
+def _validate_rate_limit(value: int) -> None:
+    if not 1 <= value <= 100_000:
+        raise ValueError("--rate-limit must be between 1 and 100000.")
+
+
 def _validate_token_environment(token_env: str) -> str:
     normalized = token_env.strip()
     if not _ENVIRONMENT_NAME.fullmatch(normalized):
-        raise ValueError("--token-env must be a valid environment-variable name.")
+        raise ValueError("Token environment names must be valid environment-variable names.")
     return normalized
 
 
-def _validate_token(token_env: str) -> None:
-    if len(os.getenv(token_env, "")) < _MINIMUM_API_TOKEN_LENGTH:
+def _validate_tokens(*token_environments: str) -> None:
+    if not any(
+        len(os.getenv(environment, "")) >= _MINIMUM_API_TOKEN_LENGTH
+        for environment in token_environments
+    ):
+        names = ", ".join(token_environments)
         raise ValueError(
-            f"{token_env} must contain a random API token of at least "
+            f"At least one of {names} must contain a random API token of at least "
             f"{_MINIMUM_API_TOKEN_LENGTH} characters."
         )
 
 
-def _validate_dashboard(
-    *,
-    enabled: bool,
-    token_env: str,
-    session_minutes: int,
-) -> None:
+def _validate_dashboard(*, enabled: bool, token_env: str, session_minutes: int) -> None:
     if not 5 <= session_minutes <= 1_440:
         raise ValueError("--dashboard-session-minutes must be between 5 and 1440.")
     if enabled and len(os.getenv(token_env, "")) < _MINIMUM_DASHBOARD_TOKEN_LENGTH:

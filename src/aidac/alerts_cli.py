@@ -14,11 +14,10 @@ from rich.table import Table
 from aidac.alert_store import (
     AlertStatus,
     AlertStoreError,
-    filter_alerts,
     get_alert,
-    load_alerts,
     parse_alert_status,
     prune_alert_log,
+    query_alerts,
     update_alert_status,
 )
 from aidac.alerting import DEFAULT_ALERT_LOG, DEFAULT_AUDIT_LOG, write_audit_event
@@ -34,29 +33,49 @@ console = Console()
 def alerts_list(
     alert_log: Annotated[
         Path,
-        typer.Option("--alert-log", help="Private JSONL alert lifecycle log."),
+        typer.Option("--alert-log", help="SQLite store or legacy JSONL alert log."),
     ] = DEFAULT_ALERT_LOG,
     status: Annotated[
         str | None,
         typer.Option("--status", help="Filter by new, acknowledged, or resolved."),
     ] = None,
+    severity: Annotated[
+        str | None,
+        typer.Option("--severity", help="Filter by exact severity."),
+    ] = None,
+    minimum_risk: Annotated[
+        float,
+        typer.Option("--min-risk", help="Minimum risk score between 0.0 and 1.0."),
+    ] = 0.0,
+    search: Annotated[
+        str | None,
+        typer.Option("--search", "-q", help="Search identity, database, IP, class, or query."),
+    ] = None,
     limit: Annotated[
         int,
         typer.Option("--limit", "-n", help="Maximum alerts to display."),
     ] = 50,
+    offset: Annotated[
+        int,
+        typer.Option("--offset", help="Number of matching alerts to skip."),
+    ] = 0,
     json_output: Annotated[
         bool,
         typer.Option("--json", help="Return machine-readable JSON."),
     ] = False,
 ) -> None:
-    """List current deduplicated alerts."""
+    """List current deduplicated alerts with filtering and pagination."""
 
     try:
         parsed_status = parse_alert_status(status)
-        alerts = filter_alerts(
-            load_alerts(alert_log),
+        alerts, total = query_alerts(
+            alert_log,
             status=parsed_status,
+            severity=severity,
+            minimum_risk=minimum_risk,
+            search=search,
             limit=limit,
+            offset=offset,
         )
     except AlertStoreError as error:
         _fail("Unable to list alerts", error)
@@ -64,7 +83,13 @@ def alerts_list(
     if json_output:
         typer.echo(
             json.dumps(
-                {"alert_count": len(alerts), "alerts": alerts},
+                {
+                    "alert_count": len(alerts),
+                    "total": total,
+                    "limit": limit,
+                    "offset": offset,
+                    "alerts": alerts,
+                },
                 indent=2,
                 sort_keys=True,
                 ensure_ascii=False,
@@ -76,12 +101,13 @@ def alerts_list(
         console.print("[yellow]No alerts found.[/yellow]")
         return
 
-    table = Table(title="AI-DAC alert lifecycle", show_lines=True)
+    table = Table(title=f"AI-DAC alert lifecycle ({len(alerts)} of {total})", show_lines=True)
     table.add_column("Alert ID")
     table.add_column("Status")
     table.add_column("Count", justify="right")
     table.add_column("Last seen")
     table.add_column("Severity")
+    table.add_column("Risk", justify="right")
     table.add_column("Database")
     table.add_column("Query")
 
@@ -95,6 +121,7 @@ def alerts_list(
             str(alert.get("occurrence_count", 1)),
             str(alert.get("last_seen", "")),
             str(alert.get("severity", "")),
+            f"{float(alert.get('risk_score', 0.0)):.3f}",
             str(alert.get("database", "")),
             query,
         )
@@ -107,7 +134,7 @@ def alerts_show(
     alert_id: Annotated[str, typer.Argument(help="Alert identifier, for example alrt_....")],
     alert_log: Annotated[
         Path,
-        typer.Option("--alert-log", help="Private JSONL alert lifecycle log."),
+        typer.Option("--alert-log", help="SQLite store or legacy JSONL alert log."),
     ] = DEFAULT_ALERT_LOG,
     json_output: Annotated[
         bool,
@@ -138,7 +165,7 @@ def alerts_acknowledge(
     alert_id: Annotated[str, typer.Argument(help="Alert identifier to acknowledge.")],
     alert_log: Annotated[
         Path,
-        typer.Option("--alert-log", help="Private JSONL alert lifecycle log."),
+        typer.Option("--alert-log", help="SQLite store or legacy JSONL alert log."),
     ] = DEFAULT_ALERT_LOG,
     audit_log: Annotated[
         Path,
@@ -170,7 +197,7 @@ def alerts_resolve(
     alert_id: Annotated[str, typer.Argument(help="Alert identifier to resolve.")],
     alert_log: Annotated[
         Path,
-        typer.Option("--alert-log", help="Private JSONL alert lifecycle log."),
+        typer.Option("--alert-log", help="SQLite store or legacy JSONL alert log."),
     ] = DEFAULT_ALERT_LOG,
     audit_log: Annotated[
         Path,
@@ -201,7 +228,7 @@ def alerts_resolve(
 def alerts_prune(
     alert_log: Annotated[
         Path,
-        typer.Option("--alert-log", help="Private JSONL alert lifecycle log."),
+        typer.Option("--alert-log", help="SQLite store or legacy JSONL alert log."),
     ] = DEFAULT_ALERT_LOG,
     audit_log: Annotated[
         Path,

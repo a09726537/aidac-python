@@ -32,6 +32,7 @@ from aidac.alerting import (
 )
 from aidac.alerts_cli import alerts_app
 from aidac.api_cli import api_app
+from aidac.audit_cli import audit_app
 from aidac.config import (
     DEFAULT_CONFIG_FILE,
     ConfigError,
@@ -44,8 +45,10 @@ from aidac.connectors.postgresql import (
     PostgreSQLAuditConnector,
     PostgreSQLConnectorError,
 )
+from aidac.doctor import doctor
 from aidac.engine import AIDAC
 from aidac.models import DatabaseEvent, SecurityDecision
+from aidac.storage_cli import storage_app
 
 app = typer.Typer(
     name="aidac",
@@ -62,6 +65,9 @@ app.add_typer(postgres_app, name="postgres")
 app.add_typer(config_app, name="config")
 app.add_typer(alerts_app, name="alerts")
 app.add_typer(api_app, name="api")
+app.add_typer(storage_app, name="storage")
+app.add_typer(audit_app, name="audit")
+app.command("doctor")(doctor)
 
 console = Console()
 
