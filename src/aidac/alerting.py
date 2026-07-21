@@ -15,6 +15,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
+from aidac.alert_store import enrich_alert_record
+
 DEFAULT_ALERT_LOG = Path("~/.local/state/aidac/alerts.jsonl")
 DEFAULT_AUDIT_LOG = Path("~/.local/state/aidac/audit.jsonl")
 DEFAULT_WEBHOOK_SECRET_ENV = "AIDAC_WEBHOOK_SECRET"
@@ -69,14 +71,25 @@ def utc_timestamp() -> str:
 def build_alert_batch(
     records: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Build a uniquely identified alert batch."""
+    """Build a uniquely identified alert batch with lifecycle metadata."""
+
+    batch_id = secrets.token_hex(16)
+    generated_at = utc_timestamp()
+    alerts = [
+        enrich_alert_record(
+            record,
+            batch_id=batch_id,
+            generated_at=generated_at,
+        )
+        for record in records
+    ]
 
     return {
         "type": "aidac_alert_batch",
-        "batch_id": secrets.token_hex(16),
-        "generated_at": utc_timestamp(),
-        "alert_count": len(records),
-        "alerts": records,
+        "batch_id": batch_id,
+        "generated_at": generated_at,
+        "alert_count": len(alerts),
+        "alerts": alerts,
     }
 
 
@@ -210,7 +223,7 @@ def send_signed_webhook(
         method="POST",
         headers={
             "Content-Type": "application/json",
-            "User-Agent": "aidac-sec/0.6",
+            "User-Agent": "aidac-sec/0.7",
             "X-AIDAC-Timestamp": timestamp,
             "X-AIDAC-Signature": f"sha256={signature}",
         },

@@ -1,5 +1,6 @@
 """Public interface for the AI-DAC Python package."""
 
+from aidac.alert_store import AlertStatus, AlertStoreError
 from aidac.connectors import (
     PostgreSQLAuditConfig,
     PostgreSQLAuditConnector,
@@ -15,6 +16,8 @@ from aidac.models import (
 
 __all__ = [
     "AIDAC",
+    "AlertStatus",
+    "AlertStoreError",
     "DatabaseEvent",
     "DetectionResult",
     "PostgreSQLAuditConfig",
@@ -25,4 +28,4 @@ __all__ = [
 ]
 
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"

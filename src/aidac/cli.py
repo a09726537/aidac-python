@@ -18,18 +18,19 @@ from rich.console import Console
 from rich.table import Table
 
 from aidac import __version__
+from aidac.alert_store import AlertStoreError, persist_alert_batch
 from aidac.alerting import (
     DEFAULT_ALERT_LOG,
     DEFAULT_AUDIT_LOG,
     DEFAULT_WEBHOOK_SECRET_ENV,
     AlertingError,
     WebhookSettings,
-    append_alert_records,
     build_alert_batch,
     send_signed_webhook,
     write_audit_event,
     write_batch_export,
 )
+from aidac.alerts_cli import alerts_app
 from aidac.config import (
     DEFAULT_CONFIG_FILE,
     ConfigError,
@@ -58,6 +59,7 @@ postgres_app = typer.Typer(
 
 app.add_typer(postgres_app, name="postgres")
 app.add_typer(config_app, name="config")
+app.add_typer(alerts_app, name="alerts")
 
 console = Console()
 
@@ -506,6 +508,7 @@ def postgres_watch(
         )
     except (
         AlertingError,
+        AlertStoreError,
         ConfigError,
         PostgreSQLConnectorError,
         OSError,
@@ -561,10 +564,20 @@ def postgres_watch(
                 batch.update(_json_payload(alerts))
 
                 if persist_alerts:
-                    append_alert_records(
+                    lifecycle_alerts = persist_alert_batch(
                         expanded_alert_log,
                         batch,
                     )
+                    current_ids = {
+                        str(alert.get("alert_id", ""))
+                        for alert in batch["alerts"]
+                        if isinstance(alert, dict)
+                    }
+                    batch["alerts"] = [
+                        alert
+                        for alert in lifecycle_alerts
+                        if str(alert.get("alert_id", "")) in current_ids
+                    ]
 
                 export_file = None
                 if expanded_export_directory is not None:
@@ -629,7 +642,7 @@ def postgres_watch(
                 break
 
             time.sleep(interval)
-    except AlertingError as error:
+    except (AlertingError, AlertStoreError) as error:
         console.print(f"[red]Alert processing failed: {error}[/red]")
         raise typer.Exit(code=1) from error
     except KeyboardInterrupt:
