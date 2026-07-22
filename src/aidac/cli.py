@@ -48,6 +48,7 @@ from aidac.connectors.postgresql import (
 from aidac.doctor import doctor
 from aidac.engine import AIDAC
 from aidac.models import DatabaseEvent, SecurityDecision
+from aidac.service_cli import service_app
 from aidac.storage_cli import storage_app
 
 app = typer.Typer(
@@ -67,6 +68,7 @@ app.add_typer(alerts_app, name="alerts")
 app.add_typer(api_app, name="api")
 app.add_typer(storage_app, name="storage")
 app.add_typer(audit_app, name="audit")
+app.add_typer(service_app, name="service")
 app.command("doctor")(doctor)
 
 console = Console()

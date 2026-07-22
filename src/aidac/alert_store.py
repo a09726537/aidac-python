@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sqlite3
 from contextlib import closing
@@ -21,6 +22,31 @@ parse_alert_status = legacy.parse_alert_status
 
 CURRENT_SCHEMA_VERSION = 1
 _SQLITE_SUFFIXES = {".db", ".sqlite", ".sqlite3"}
+POSTGRES_STORE_DSN_ENV = "AIDAC_ALERT_STORE_DSN"
+POSTGRES_STORE_SCHEMA_ENV = "AIDAC_ALERT_STORE_SCHEMA"
+DEFAULT_POSTGRES_STORE_SCHEMA = "aidac"
+
+
+def _postgres_settings() -> tuple[str, str] | None:
+    dsn = os.getenv(POSTGRES_STORE_DSN_ENV, "").strip()
+    if not dsn:
+        return None
+    schema = os.getenv(POSTGRES_STORE_SCHEMA_ENV, DEFAULT_POSTGRES_STORE_SCHEMA).strip()
+    if not schema:
+        raise AlertStoreError(f"{POSTGRES_STORE_SCHEMA_ENV} cannot be empty.")
+    return dsn, schema
+
+
+def is_postgres_store_configured() -> bool:
+    """Return whether the PostgreSQL alert-store DSN is configured."""
+
+    return _postgres_settings() is not None
+
+
+def uses_database_store(path: Path) -> bool:
+    """Return whether AI-DAC is using SQLite or PostgreSQL storage."""
+
+    return is_postgres_store_configured() or is_sqlite_store(path)
 
 
 def is_sqlite_store(path: Path) -> bool:
@@ -30,9 +56,16 @@ def is_sqlite_store(path: Path) -> bool:
 
 
 def initialize_store(path: Path) -> Path:
-    """Create or migrate a SQLite alert store to the current schema."""
+    """Create or migrate the configured alert store."""
 
     expanded_path = path.expanduser()
+    postgres = _postgres_settings()
+    if postgres is not None:
+        from aidac import postgres_alert_store
+
+        dsn, schema = postgres
+        postgres_alert_store.initialize_store(dsn, schema=schema)
+        return expanded_path
     if not is_sqlite_store(expanded_path):
         raise AlertStoreError("SQLite alert stores must end with .db, .sqlite, or .sqlite3.")
 
@@ -72,6 +105,13 @@ def initialize_store(path: Path) -> Path:
 def persist_alert_batch(path: Path, batch: dict[str, Any]) -> list[dict[str, Any]]:
     """Persist a batch and return current deduplicated alert states."""
 
+    postgres = _postgres_settings()
+    if postgres is not None:
+        from aidac import postgres_alert_store
+
+        dsn, schema = postgres
+        return postgres_alert_store.persist_alert_batch(dsn, schema=schema, batch=batch)
+
     expanded_path = path.expanduser()
     if not is_sqlite_store(expanded_path):
         return legacy.persist_alert_batch(expanded_path, batch)
@@ -107,7 +147,14 @@ def persist_alert_batch(path: Path, batch: dict[str, Any]) -> list[dict[str, Any
 
 
 def load_alerts(path: Path) -> list[dict[str, Any]]:
-    """Load current alert states from SQLite or a legacy JSONL log."""
+    """Load current alert states from the configured backend."""
+
+    postgres = _postgres_settings()
+    if postgres is not None:
+        from aidac import postgres_alert_store
+
+        dsn, schema = postgres
+        return postgres_alert_store.load_alerts(dsn, schema=schema)
 
     expanded_path = path.expanduser()
     if not is_sqlite_store(expanded_path):
@@ -138,6 +185,22 @@ def query_alerts(
     offset: int = 0,
 ) -> tuple[list[dict[str, Any]], int]:
     """Search, paginate and count current alerts."""
+
+    postgres = _postgres_settings()
+    if postgres is not None:
+        from aidac import postgres_alert_store
+
+        dsn, schema = postgres
+        return postgres_alert_store.query_alerts(
+            dsn,
+            schema=schema,
+            status=status,
+            severity=severity,
+            minimum_risk=minimum_risk,
+            search=search,
+            limit=limit,
+            offset=offset,
+        )
 
     _validate_query_parameters(minimum_risk=minimum_risk, limit=limit, offset=offset)
     normalized_severity = _normalize_optional_text(severity)
@@ -210,6 +273,13 @@ def query_alerts(
 def get_alert(path: Path, alert_id: str) -> dict[str, Any]:
     """Return one alert by identifier."""
 
+    postgres = _postgres_settings()
+    if postgres is not None:
+        from aidac import postgres_alert_store
+
+        dsn, schema = postgres
+        return postgres_alert_store.get_alert(dsn, schema=schema, alert_id=alert_id)
+
     expanded_path = path.expanduser()
     normalized_id = alert_id.strip()
     if not normalized_id:
@@ -266,6 +336,20 @@ def update_alert_status(
     note: str | None = None,
 ) -> dict[str, Any]:
     """Persist an acknowledged or resolved lifecycle transition."""
+
+    postgres = _postgres_settings()
+    if postgres is not None:
+        from aidac import postgres_alert_store
+
+        dsn, schema = postgres
+        return postgres_alert_store.update_alert_status(
+            dsn,
+            schema=schema,
+            alert_id=alert_id,
+            status=status,
+            actor=actor,
+            note=note,
+        )
 
     expanded_path = path.expanduser()
     if not is_sqlite_store(expanded_path):
@@ -354,7 +438,20 @@ def prune_alert_log(
     status: AlertStatus = AlertStatus.RESOLVED,
     now: datetime | None = None,
 ) -> tuple[int, int]:
-    """Remove old alerts from SQLite or compact a legacy JSONL log."""
+    """Remove old alerts from the configured store."""
+
+    postgres = _postgres_settings()
+    if postgres is not None:
+        from aidac import postgres_alert_store
+
+        dsn, schema = postgres
+        return postgres_alert_store.prune_alert_log(
+            dsn,
+            schema=schema,
+            older_than_days=older_than_days,
+            status=status,
+            now=now,
+        )
 
     expanded_path = path.expanduser()
     if not is_sqlite_store(expanded_path):
@@ -399,10 +496,17 @@ def migrate_jsonl_to_sqlite(
     destination_path = destination.expanduser()
     if is_sqlite_store(source_path):
         raise AlertStoreError("Migration source must be a JSONL alert log.")
-    if not is_sqlite_store(destination_path):
-        raise AlertStoreError("Migration destination must be a SQLite alert store.")
 
     alerts = legacy.load_alerts(source_path)
+    postgres = _postgres_settings()
+    if postgres is not None:
+        from aidac import postgres_alert_store
+
+        dsn, schema = postgres
+        return postgres_alert_store.import_alerts(dsn, schema=schema, alerts=alerts, merge=merge)
+
+    if not is_sqlite_store(destination_path):
+        raise AlertStoreError("Migration destination must be a SQLite alert store.")
     initialize_store(destination_path)
 
     try:
@@ -428,6 +532,13 @@ def migrate_jsonl_to_sqlite(
 
 def store_info(path: Path) -> dict[str, Any]:
     """Return non-sensitive storage diagnostics."""
+
+    postgres = _postgres_settings()
+    if postgres is not None:
+        from aidac import postgres_alert_store
+
+        dsn, schema = postgres
+        return postgres_alert_store.store_info(dsn, schema=schema)
 
     expanded_path = path.expanduser()
     backend = "sqlite" if is_sqlite_store(expanded_path) else "jsonl"
@@ -462,6 +573,13 @@ def store_info(path: Path) -> dict[str, Any]:
 def verify_store(path: Path) -> dict[str, Any]:
     """Validate the selected store and return a diagnostic result."""
 
+    postgres = _postgres_settings()
+    if postgres is not None:
+        from aidac import postgres_alert_store
+
+        dsn, schema = postgres
+        return postgres_alert_store.verify_store(dsn, schema=schema)
+
     expanded_path = path.expanduser()
     information = store_info(expanded_path)
     information["valid"] = True
@@ -485,6 +603,13 @@ def verify_store(path: Path) -> dict[str, Any]:
 
 def backup_store(source: Path, destination: Path) -> Path:
     """Create a consistent private backup of an alert store."""
+
+    postgres = _postgres_settings()
+    if postgres is not None:
+        from aidac import postgres_alert_store
+
+        dsn, schema = postgres
+        return postgres_alert_store.backup_store(dsn, schema=schema, destination=destination)
 
     source_path = source.expanduser()
     destination_path = destination.expanduser()
@@ -525,6 +650,14 @@ def restore_store(
     overwrite: bool = False,
 ) -> Path:
     """Validate and restore a private alert-store backup."""
+
+    postgres = _postgres_settings()
+    if postgres is not None:
+        from aidac import postgres_alert_store
+
+        dsn, schema = postgres
+        postgres_alert_store.restore_store(dsn, schema=schema, backup=backup, overwrite=overwrite)
+        return destination.expanduser()
 
     backup_path = backup.expanduser()
     destination_path = destination.expanduser()

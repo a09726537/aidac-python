@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.0
+
+- Added an optional PostgreSQL alert lifecycle store selected with `AIDAC_ALERT_STORE_DSN`.
+- Added PostgreSQL schema migration, lifecycle querying, updates, pruning, import, backup, and restore.
+- Added an authenticated Prometheus `/metrics` endpoint with bounded labels.
+- Added structured JSON application logging with private log-file permissions.
+- Added `aidac service install`, `status`, `logs`, and `remove` for a hardened user systemd service.
+- Updated diagnostics for PostgreSQL-managed storage permissions.
+- Preserved SQLite and JSONL compatibility and all stable 1.0 interfaces.
+
 ## 1.0.0
 
 - Added a transactional SQLite alert store with versioned schema migrations.

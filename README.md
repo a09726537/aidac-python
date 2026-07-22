@@ -3,14 +3,14 @@
 AI-DAC is an adaptive and explainable database-cybersecurity framework for detecting,
 monitoring, storing, and managing potentially dangerous SQL activity.
 
-Version **1.0.0** establishes a stable storage, API, audit, backup, and operational interface
-while preserving compatibility with the JSONL lifecycle logs produced by AI-DAC 0.6–0.9.
+Version **1.1.0** adds optional PostgreSQL lifecycle storage, Prometheus metrics, structured service logging, and hardened user-level systemd deployment while preserving the stable 1.0 interfaces.
 
 ## Main capabilities
 
 - SQL event normalization, anomaly detection, risk scoring, and explanations
 - Read-only PostgreSQL audit collection and continuous monitoring
 - SQLite alert store with schema migrations and transactional lifecycle updates
+- Optional PostgreSQL lifecycle store selected securely through environment variables
 - Import compatibility for legacy JSONL alert logs
 - Alert deduplication with `new`, `acknowledged`, and `resolved` states
 - Tamper-evident JSONL audit log with sequence numbers and SHA-256 hash chaining
@@ -18,6 +18,8 @@ while preserving compatibility with the JSONL lifecycle logs produced by AI-DAC 
 - Pagination, filtering, search, and per-token API rate limiting
 - Authenticated server-rendered security-operations dashboard
 - Consistent alert-store backup and validated restore commands
+- Prometheus-compatible metrics and structured JSON application logs
+- Hardened user-level systemd service generation and management
 - Local diagnostic and production-configuration commands
 
 ## Installation
@@ -58,9 +60,11 @@ aidac postgres scan --min-risk 0.5
 aidac postgres watch --interval 5 --min-severity high
 ```
 
-## SQLite alert storage
+## Alert storage
 
-AI-DAC 1.0 uses this store by default:
+### SQLite default
+
+AI-DAC uses this store by default:
 
 ```text
 ~/.local/state/aidac/alerts.db
@@ -85,6 +89,33 @@ aidac storage migrate-jsonl \
 ```
 
 The JSONL backend remains supported when a path ending in `.jsonl` is supplied explicitly.
+
+### Optional PostgreSQL lifecycle store
+
+Set a dedicated writable PostgreSQL DSN outside the repository. The collector account
+`aidac_reader` can remain read-only; use a separate least-privilege role for lifecycle data.
+
+```bash
+export AIDAC_ALERT_STORE_DSN="postgresql://aidac_app:REDACTED@127.0.0.1:5432/aidac_pgsql"
+export AIDAC_ALERT_STORE_SCHEMA="aidac"
+aidac storage init
+aidac storage info
+```
+
+When `AIDAC_ALERT_STORE_DSN` is present, alert lifecycle commands, the API, dashboard,
+monitoring process, backup, restore, and diagnostics use PostgreSQL. The DSN is never
+returned by API or diagnostic output. `AIDAC_ALERT_STORE_SCHEMA` defaults to `aidac`.
+
+Import a previous JSONL lifecycle log directly into PostgreSQL:
+
+```bash
+aidac storage migrate-jsonl \
+  --source ~/.local/state/aidac/alerts.jsonl \
+  --destination ~/.local/state/aidac/alerts.db
+```
+
+For PostgreSQL, backups are private application-level JSON snapshots that can be restored
+with the same `aidac storage restore ... --yes` command.
 
 ## Alert lifecycle and search
 
@@ -163,8 +194,57 @@ Useful routes:
 - `POST /api/v1/alerts/{alert_id}/resolve`
 - `GET /api/v1/system/storage`
 - `GET /api/v1/system/audit/verify`
+- `GET /metrics` (viewer token required)
 
 OpenAPI documentation is available at `http://127.0.0.1:8000/docs`.
+
+
+## Prometheus metrics
+
+The authenticated `/metrics` endpoint exposes bounded HTTP counters, request-duration sums
+and counts, alert gauges by lifecycle status and severity, and alert-store availability.
+Prometheus can use the viewer token as a bearer token.
+
+```bash
+curl -H "Authorization: Bearer $AIDAC_API_VIEWER_TOKEN" \
+  http://127.0.0.1:8000/metrics
+```
+
+No alert identifiers, SQL statements, database usernames, DSNs, or tokens are used as metric
+labels.
+
+## Structured logging
+
+Write AI-DAC application events as private JSON Lines records:
+
+```bash
+aidac api serve \
+  --log-format json \
+  --log-file ~/.local/state/aidac/service.jsonl
+```
+
+The file is created with mode `600`. HTTP request records include method, normalized path,
+status code, and duration without retaining bearer tokens or dynamic alert identifiers.
+
+## User-level systemd deployment
+
+Generate a hardened service and a private environment template:
+
+```bash
+aidac service install
+```
+
+Edit `~/.config/aidac/aidac.env`, add the required random tokens and optional PostgreSQL
+store variables, then start the service:
+
+```bash
+systemctl --user enable --now aidac-api.service
+aidac service status
+aidac service logs --lines 100
+```
+
+The generated unit is loopback-only and uses `NoNewPrivileges`, `ProtectSystem=strict`,
+`ProtectHome=read-only`, private temporary storage, restart-on-failure, and `UMask=0077`.
 
 ## Web dashboard
 
@@ -192,8 +272,7 @@ Inspect the effective configuration:
 aidac config show --json
 ```
 
-The template covers PostgreSQL, storage, API binding, rate limiting, and dashboard session
-settings. Passwords and tokens must remain in environment variables or a dedicated secret
+The template covers PostgreSQL collection, local storage paths, API binding, rate limiting, and dashboard session settings. PostgreSQL lifecycle storage is selected only through `AIDAC_ALERT_STORE_DSN` and `AIDAC_ALERT_STORE_SCHEMA`. Passwords and tokens must remain in environment variables or a dedicated secret
 manager.
 
 ## Diagnostics

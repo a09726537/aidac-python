@@ -42,7 +42,7 @@ dashboard_session_minutes = 480
 """
 
 PRODUCTION_CONFIG_TEXT: Final = """\
-# AI-DAC 1.0 production-oriented configuration.
+# AI-DAC 1.1 production-oriented configuration.
 # Secrets intentionally remain outside this file.
 
 [postgresql]
@@ -75,6 +75,8 @@ dashboard_session_minutes = 120
 # AIDAC_API_ADMIN_TOKEN
 # AIDAC_DASHBOARD_TOKEN
 # AIDAC_WEBHOOK_SECRET
+# AIDAC_ALERT_STORE_DSN (optional PostgreSQL lifecycle store)
+# AIDAC_ALERT_STORE_SCHEMA (defaults to aidac)
 """
 
 

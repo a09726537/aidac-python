@@ -14,6 +14,7 @@ from aidac.alert_store import (
     AlertStoreError,
     backup_store,
     initialize_store,
+    is_postgres_store_configured,
     migrate_jsonl_to_sqlite,
     restore_store,
     store_info,
@@ -46,7 +47,10 @@ def storage_init(
     except AlertStoreError as error:
         _fail("Unable to initialize alert store", error)
 
-    console.print(f"[green]Alert store ready:[/green] {initialized}")
+    backend = information.get("backend", "unknown")
+    console.print(f"[green]Alert store ready:[/green] {backend}")
+    if backend != "postgresql":
+        console.print(f"Path: {initialized}")
     console.print(f"Schema version: {information['schema_version']}")
 
 
@@ -147,7 +151,7 @@ def storage_restore(
     """Validate and restore a store backup."""
 
     destination = store.expanduser()
-    if destination.exists() and not confirmed:
+    if not is_postgres_store_configured() and destination.exists() and not confirmed:
         console.print("[yellow]Restore was not performed. Add --yes to replace the store.[/yellow]")
         raise typer.Exit(code=1)
 

@@ -47,6 +47,7 @@ def doctor(
     """Run local configuration, storage, audit and permission checks."""
 
     checks: list[dict[str, Any]] = []
+    alert_backend = "unknown"
     checks.append({"check": "package_version", "status": "ok", "detail": __version__})
 
     try:
@@ -63,6 +64,7 @@ def doctor(
 
     try:
         information = verify_store(store)
+        alert_backend = str(information.get("backend", "unknown"))
         checks.append(
             {
                 "check": "alert_store",
@@ -91,8 +93,17 @@ def doctor(
     except AlertingError as error:
         checks.append({"check": "audit_chain", "status": "error", "detail": str(error)})
 
-    for name, path in (("alert_store_permissions", store), ("audit_log_permissions", audit_log)):
-        checks.append(_permission_check(name, path.expanduser()))
+    if alert_backend == "postgresql":
+        checks.append(
+            {
+                "check": "alert_store_permissions",
+                "status": "ok",
+                "detail": "Managed by PostgreSQL roles and privileges.",
+            }
+        )
+    else:
+        checks.append(_permission_check("alert_store_permissions", store.expanduser()))
+    checks.append(_permission_check("audit_log_permissions", audit_log.expanduser()))
 
     configured_roles = [
         environment for environment in _TOKEN_ENVIRONMENTS if len(os.getenv(environment, "")) >= 32

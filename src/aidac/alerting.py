@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from aidac import __version__
-from aidac.alert_store import enrich_alert_record, is_sqlite_store, persist_alert_batch
+from aidac.alert_store import enrich_alert_record, persist_alert_batch, uses_database_store
 
 DEFAULT_ALERT_LOG = Path("~/.local/state/aidac/alerts.db")
 DEFAULT_AUDIT_LOG = Path("~/.local/state/aidac/audit.jsonl")
@@ -118,7 +118,7 @@ def append_alert_records(
     """Append one JSONL record for every alert."""
 
     expanded_path = path.expanduser()
-    if is_sqlite_store(expanded_path):
+    if uses_database_store(expanded_path):
         persist_alert_batch(expanded_path, batch)
         return expanded_path
 

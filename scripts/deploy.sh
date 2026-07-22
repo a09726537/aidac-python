@@ -199,7 +199,20 @@ verify_and_build() {
     "$PYTHON" -m ruff check .
     "$PYTHON" -m ruff format --check .
     "$PYTHON" -m mypy src
-    "$PYTHON" -m pytest -v
+
+    local test_home
+    test_home="$(mktemp -d)"
+    env \
+        -u AIDAC_API_TOKEN \
+        -u AIDAC_API_VIEWER_TOKEN \
+        -u AIDAC_API_ANALYST_TOKEN \
+        -u AIDAC_API_ADMIN_TOKEN \
+        -u AIDAC_DASHBOARD_TOKEN \
+        -u AIDAC_ALERT_STORE_DSN \
+        -u AIDAC_ALERT_STORE_SCHEMA \
+        HOME="$test_home" \
+        "$PYTHON" -m pytest -v
+    rm -rf "$test_home"
 
     if [[ ! -s README.md ]]; then
         printf 'WARNING: README.md is empty; package metadata will be incomplete.\n'

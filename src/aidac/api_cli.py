@@ -12,6 +12,7 @@ import typer
 from rich.console import Console
 
 from aidac.alerting import DEFAULT_ALERT_LOG, DEFAULT_AUDIT_LOG
+from aidac.structured_logging import configure_logging
 
 DEFAULT_API_TOKEN_ENV = "AIDAC_API_TOKEN"
 DEFAULT_VIEWER_TOKEN_ENV = "AIDAC_API_VIEWER_TOKEN"
@@ -23,6 +24,7 @@ DEFAULT_RATE_LIMIT_PER_MINUTE = 120
 _MINIMUM_API_TOKEN_LENGTH = 32
 _MINIMUM_DASHBOARD_TOKEN_LENGTH = 32
 _ALLOWED_LOG_LEVELS = {"critical", "error", "warning", "info", "debug", "trace"}
+_ALLOWED_LOG_FORMATS = {"text", "json"}
 _ENVIRONMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 api_app = typer.Typer(
@@ -111,8 +113,16 @@ def api_serve(
     ] = DEFAULT_DASHBOARD_SESSION_MINUTES,
     log_level: Annotated[
         str,
-        typer.Option("--log-level", help="Uvicorn log level."),
+        typer.Option("--log-level", help="Uvicorn and application log level."),
     ] = "info",
+    log_format: Annotated[
+        str,
+        typer.Option("--log-format", help="Application log format: text or json."),
+    ] = "text",
+    log_file: Annotated[
+        Path | None,
+        typer.Option("--log-file", help="Optional private application log file."),
+    ] = None,
     access_log: Annotated[
         bool,
         typer.Option("--access-log/--no-access-log", help="Enable HTTP access logs."),
@@ -127,6 +137,7 @@ def api_serve(
         normalized_analyst_env = _validate_token_environment(analyst_token_env)
         normalized_admin_env = _validate_token_environment(admin_token_env)
         normalized_level = _validate_log_level(log_level)
+        normalized_log_format = _validate_log_format(log_format)
         normalized_dashboard_token_env = _validate_token_environment(dashboard_token_env)
         _validate_port(port)
         _validate_rate_limit(rate_limit)
@@ -151,6 +162,11 @@ def api_serve(
         _fail(error)
 
     try:
+        configure_logging(
+            log_format=normalized_log_format,
+            log_file=None if log_file is None else log_file.expanduser(),
+            level=normalized_level,
+        )
         import uvicorn
 
         from aidac.api import create_app
@@ -248,6 +264,14 @@ def _validate_log_level(log_level: str) -> str:
     if normalized not in _ALLOWED_LOG_LEVELS:
         allowed = ", ".join(sorted(_ALLOWED_LOG_LEVELS))
         raise ValueError(f"--log-level must be one of: {allowed}.")
+    return normalized
+
+
+def _validate_log_format(log_format: str) -> str:
+    normalized = log_format.strip().casefold()
+    if normalized not in _ALLOWED_LOG_FORMATS:
+        allowed = ", ".join(sorted(_ALLOWED_LOG_FORMATS))
+        raise ValueError(f"--log-format must be one of: {allowed}.")
     return normalized
 
 

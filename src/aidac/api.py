@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -42,6 +42,8 @@ from aidac.dashboard import (
     DEFAULT_DASHBOARD_TOKEN_ENV,
     install_dashboard_routes,
 )
+from aidac.metrics import MetricsRegistry
+from aidac.structured_logging import get_logger
 
 DEFAULT_API_TOKEN_ENV = "AIDAC_API_TOKEN"
 DEFAULT_VIEWER_TOKEN_ENV = "AIDAC_API_VIEWER_TOKEN"
@@ -173,6 +175,8 @@ def create_app(
     bearer = HTTPBearer(auto_error=False)
     store_lock = threading.RLock()
     limiter = _RateLimiter(rate_limit_per_minute)
+    metrics = MetricsRegistry()
+    logger = get_logger()
 
     app = FastAPI(
         title="AI-DAC Alert API",
@@ -186,10 +190,52 @@ def create_app(
         redoc_url=None,
         openapi_url="/openapi.json",
     )
+    app.state.metrics_registry = metrics
 
     @app.middleware("http")
     async def add_security_headers(request: Request, call_next: Any) -> Any:
-        response = await call_next(request)
+        started = time.perf_counter()
+        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+        except Exception:
+            duration = time.perf_counter() - started
+            metrics.observe_http_request(
+                method=request.method,
+                path=request.url.path,
+                status_code=status_code,
+                duration_seconds=duration,
+            )
+            logger.exception(
+                "API request failed",
+                extra={
+                    "event": "http_request",
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status_code": status_code,
+                    "duration_seconds": round(duration, 9),
+                },
+            )
+            raise
+
+        duration = time.perf_counter() - started
+        metrics.observe_http_request(
+            method=request.method,
+            path=request.url.path,
+            status_code=status_code,
+            duration_seconds=duration,
+        )
+        logger.info(
+            "API request completed",
+            extra={
+                "event": "http_request",
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": status_code,
+                "duration_seconds": round(duration, 9),
+            },
+        )
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
@@ -326,6 +372,23 @@ def create_app(
                 detail=response.model_dump(),
             )
         return response
+
+    @app.get(
+        "/metrics",
+        response_class=PlainTextResponse,
+        tags=["system"],
+        summary="Prometheus metrics",
+    )
+    def prometheus_metrics(
+        principal: APIPrincipal = viewer_authentication,
+    ) -> PlainTextResponse:
+        del principal
+        with store_lock:
+            body = metrics.render(expanded_alert_log)
+        return PlainTextResponse(
+            content=body,
+            media_type="text/plain; version=0.0.4; charset=utf-8",
+        )
 
     @app.get(
         "/api/v1/alerts/summary",
@@ -469,6 +532,15 @@ def create_app(
                     "token_id": principal.token_id,
                 },
             )
+        logger.info(
+            "Alert lifecycle state changed",
+            extra={
+                "event": "alert_status_changed",
+                "role": principal.role.value,
+                "token_id": principal.token_id,
+                "alert_id": alert_id,
+            },
+        )
         return alert
 
     @app.get("/api/v1/system/storage", tags=["system"])
