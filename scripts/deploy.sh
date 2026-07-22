@@ -186,7 +186,7 @@ verify_and_build() {
     info "Installing deployment tools"
 
     "$PYTHON" -m pip install --quiet --upgrade \
-        -e ".[api]" \
+        -e ".[api,otel]" \
         build \
         twine \
         ruff \
@@ -210,6 +210,11 @@ verify_and_build() {
         -u AIDAC_DASHBOARD_TOKEN \
         -u AIDAC_ALERT_STORE_DSN \
         -u AIDAC_ALERT_STORE_SCHEMA \
+        -u AIDAC_COMPONENTS_FILE \
+        -u AIDAC_OPERATIONS_WEBHOOK_SECRET \
+        -u OTEL_EXPORTER_OTLP_TRACES_ENDPOINT \
+        -u OTEL_EXPORTER_OTLP_ENDPOINT \
+        -u OTEL_SERVICE_NAME \
         HOME="$test_home" \
         "$PYTHON" -m pytest -v
     rm -rf "$test_home"

@@ -37,13 +37,21 @@ from aidac.alerting import (
     verify_audit_log,
     write_audit_event,
 )
+from aidac.component_health import (
+    ComponentHealthRegistry,
+    ComponentTarget,
+    check_components,
+    health_summary,
+    load_component_targets,
+)
 from aidac.dashboard import (
     DEFAULT_DASHBOARD_SESSION_MINUTES,
     DEFAULT_DASHBOARD_TOKEN_ENV,
     install_dashboard_routes,
 )
-from aidac.metrics import MetricsRegistry
+from aidac.metrics import MetricsRegistry, normalize_metric_path
 from aidac.structured_logging import get_logger
+from aidac.telemetry import Telemetry
 
 DEFAULT_API_TOKEN_ENV = "AIDAC_API_TOKEN"
 DEFAULT_VIEWER_TOKEN_ENV = "AIDAC_API_VIEWER_TOKEN"
@@ -98,6 +106,7 @@ class ReadinessResponse(HealthResponse):
     token_configured: bool
     alert_store_readable: bool
     audit_log_valid: bool
+    required_components_healthy: bool = True
 
 
 class AlertListResponse(BaseModel):
@@ -158,6 +167,8 @@ def create_app(
     dashboard_enabled: bool = False,
     dashboard_token_env: str = DEFAULT_DASHBOARD_TOKEN_ENV,
     dashboard_session_minutes: int = DEFAULT_DASHBOARD_SESSION_MINUTES,
+    component_config: Path | None = None,
+    telemetry: Telemetry | None = None,
 ) -> FastAPI:
     """Create a configured AI-DAC FastAPI application."""
 
@@ -176,6 +187,11 @@ def create_app(
     store_lock = threading.RLock()
     limiter = _RateLimiter(rate_limit_per_minute)
     metrics = MetricsRegistry()
+    component_registry = ComponentHealthRegistry()
+    component_targets: list[ComponentTarget] = (
+        [] if component_config is None else load_component_targets(component_config.expanduser())
+    )
+    telemetry_handle = telemetry or Telemetry()
     logger = get_logger()
 
     app = FastAPI(
@@ -191,15 +207,46 @@ def create_app(
         openapi_url="/openapi.json",
     )
     app.state.metrics_registry = metrics
+    app.state.component_health_registry = component_registry
+    app.state.telemetry = telemetry_handle
 
     @app.middleware("http")
     async def add_security_headers(request: Request, call_next: Any) -> Any:
         started = time.perf_counter()
         status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-        try:
-            response = await call_next(request)
-            status_code = response.status_code
-        except Exception:
+        metric_path = normalize_metric_path(request.url.path)
+        attributes: dict[str, Any] = {
+            "http.request.method": request.method,
+            "url.path": metric_path,
+            "server.address": request.url.hostname or "unknown",
+        }
+        with telemetry_handle.start_span("aidac.http.request", attributes) as span:
+            try:
+                response = await call_next(request)
+                status_code = response.status_code
+            except Exception as error:
+                duration = time.perf_counter() - started
+                metrics.observe_http_request(
+                    method=request.method,
+                    path=request.url.path,
+                    status_code=status_code,
+                    duration_seconds=duration,
+                )
+                if span is not None:
+                    span.set_attribute("http.response.status_code", status_code)
+                    span.set_attribute("error.type", error.__class__.__name__)
+                logger.exception(
+                    "API request failed",
+                    extra={
+                        "event": "http_request",
+                        "method": request.method,
+                        "path": metric_path,
+                        "status_code": status_code,
+                        "duration_seconds": round(duration, 9),
+                    },
+                )
+                raise
+
             duration = time.perf_counter() - started
             metrics.observe_http_request(
                 method=request.method,
@@ -207,41 +254,25 @@ def create_app(
                 status_code=status_code,
                 duration_seconds=duration,
             )
-            logger.exception(
-                "API request failed",
+            if span is not None:
+                span.set_attribute("http.response.status_code", status_code)
+                span.set_attribute("http.server.request.duration", duration)
+            logger.info(
+                "API request completed",
                 extra={
                     "event": "http_request",
                     "method": request.method,
-                    "path": request.url.path,
+                    "path": metric_path,
                     "status_code": status_code,
                     "duration_seconds": round(duration, 9),
                 },
             )
-            raise
-
-        duration = time.perf_counter() - started
-        metrics.observe_http_request(
-            method=request.method,
-            path=request.url.path,
-            status_code=status_code,
-            duration_seconds=duration,
-        )
-        logger.info(
-            "API request completed",
-            extra={
-                "event": "http_request",
-                "method": request.method,
-                "path": request.url.path,
-                "status_code": status_code,
-                "duration_seconds": round(duration, 9),
-            },
-        )
-        response.headers["Cache-Control"] = "no-store"
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "no-referrer"
-        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        return response
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["Referrer-Policy"] = "no-referrer"
+            response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+            return response
 
     bearer_dependency = Depends(bearer)
 
@@ -358,13 +389,24 @@ def create_app(
         except AlertingError:
             audit_log_valid = False
 
-        is_ready = token_configured and alert_store_readable and audit_log_valid
+        component_results = check_components(component_targets) if component_targets else []
+        component_registry.replace(component_results)
+        required_components_healthy = all(
+            result.healthy for result in component_results if result.required
+        )
+        is_ready = (
+            token_configured
+            and alert_store_readable
+            and audit_log_valid
+            and required_components_healthy
+        )
         response = ReadinessResponse(
             status="ready" if is_ready else "not_ready",
             version=__version__,
             token_configured=token_configured,
             alert_store_readable=alert_store_readable,
             audit_log_valid=audit_log_valid,
+            required_components_healthy=required_components_healthy,
         )
         if not is_ready:
             raise HTTPException(
@@ -383,8 +425,10 @@ def create_app(
         principal: APIPrincipal = viewer_authentication,
     ) -> PlainTextResponse:
         del principal
+        component_results = check_components(component_targets) if component_targets else []
+        component_registry.replace(component_results)
         with store_lock:
-            body = metrics.render(expanded_alert_log)
+            body = metrics.render(expanded_alert_log, component_registry)
         return PlainTextResponse(
             content=body,
             media_type="text/plain; version=0.0.4; charset=utf-8",
@@ -542,6 +586,15 @@ def create_app(
             },
         )
         return alert
+
+    @app.get("/api/v1/system/components", tags=["system"])
+    def system_components(
+        principal: APIPrincipal = admin_authentication,
+    ) -> dict[str, Any]:
+        del principal
+        results = check_components(component_targets) if component_targets else []
+        component_registry.replace(results)
+        return health_summary(results)
 
     @app.get("/api/v1/system/storage", tags=["system"])
     def system_storage(

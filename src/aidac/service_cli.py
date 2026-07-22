@@ -195,6 +195,10 @@ AIDAC_DASHBOARD_TOKEN=
 # Optional PostgreSQL alert lifecycle store:
 # AIDAC_ALERT_STORE_DSN=postgresql://aidac_app:password@127.0.0.1:5432/aidac_pgsql
 # AIDAC_ALERT_STORE_SCHEMA=aidac
+# Optional distributed component checks and OTLP traces:
+# AIDAC_COMPONENTS_FILE=/home/user/.config/aidac/components.toml
+# OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://127.0.0.1:4318/v1/traces
+# OTEL_SERVICE_NAME=aidac-api
 """
 
 

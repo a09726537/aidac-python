@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from aidac.service_cli import render_systemd_unit
+from aidac.service_cli import _environment_template, render_systemd_unit
 
 
 def test_render_systemd_unit_is_hardened_and_uses_json_logging(tmp_path: Path) -> None:
@@ -21,3 +21,10 @@ def test_render_systemd_unit_is_hardened_and_uses_json_logging(tmp_path: Path) -
     assert "--dashboard" in unit
     assert "--log-format json" in unit
     assert "Restart=on-failure" in unit
+
+
+def test_environment_template_includes_observability_variables() -> None:
+    template = _environment_template()
+    assert "AIDAC_COMPONENTS_FILE" in template
+    assert "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT" in template
+    assert "OTEL_SERVICE_NAME" in template

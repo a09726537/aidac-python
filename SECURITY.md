@@ -14,6 +14,10 @@ For remote API access:
 - grant the lifecycle-store role access only to the selected AI-DAC schema;
 - keep `AIDAC_ALERT_STORE_DSN` only in a private environment or secret manager;
 - protect `/metrics` with a viewer bearer token and avoid public exposure;
+- keep component-health target names low-cardinality and never embed credentials in target URLs;
+- restrict `AIDAC_COMPONENTS_FILE` and generated operations assets to trusted administrators;
+- replace generated Alertmanager placeholders before deployment and store webhook secrets outside YAML;
+- send OTLP only to trusted collectors over an authenticated or segmented transport;
 - run `aidac doctor` and `aidac audit verify` regularly;
 - test backup restoration before relying on it operationally.
 

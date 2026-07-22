@@ -3,7 +3,7 @@
 AI-DAC is an adaptive and explainable database-cybersecurity framework for detecting,
 monitoring, storing, and managing potentially dangerous SQL activity.
 
-Version **1.1.0** adds optional PostgreSQL lifecycle storage, Prometheus metrics, structured service logging, and hardened user-level systemd deployment while preserving the stable 1.0 interfaces.
+Version **1.2.0** adds a generated Prometheus/Grafana operations bundle, distributed component health checks, signed operational notifications, and optional OpenTelemetry OTLP trace export while preserving the stable 1.x interfaces.
 
 ## Main capabilities
 
@@ -20,6 +20,10 @@ Version **1.1.0** adds optional PostgreSQL lifecycle storage, Prometheus metrics
 - Consistent alert-store backup and validated restore commands
 - Prometheus-compatible metrics and structured JSON application logs
 - Hardened user-level systemd service generation and management
+- Generated Prometheus, Alertmanager, Grafana, and OpenTelemetry Collector assets
+- Distributed component health probes with bounded Prometheus labels
+- Optional OTLP/HTTP request tracing through OpenTelemetry
+- Signed operational webhook notifications for degraded component health
 - Local diagnostic and production-configuration commands
 
 ## Installation
@@ -32,6 +36,12 @@ Install the REST API and dashboard dependencies:
 
 ```bash
 python -m pip install "aidac-sec[api]"
+```
+
+Install optional OpenTelemetry OTLP/HTTP trace export:
+
+```bash
+python -m pip install "aidac-sec[otel]"
 ```
 
 ## Basic analysis
@@ -194,6 +204,7 @@ Useful routes:
 - `POST /api/v1/alerts/{alert_id}/resolve`
 - `GET /api/v1/system/storage`
 - `GET /api/v1/system/audit/verify`
+- `GET /api/v1/system/components`
 - `GET /metrics` (viewer token required)
 
 OpenAPI documentation is available at `http://127.0.0.1:8000/docs`.
@@ -245,6 +256,94 @@ aidac service logs --lines 100
 
 The generated unit is loopback-only and uses `NoNewPrivileges`, `ProtectSystem=strict`,
 `ProtectHome=read-only`, private temporary storage, restart-on-failure, and `UMask=0077`.
+
+## Operations bundle
+
+Generate version-controlled observability assets without embedding secrets:
+
+```bash
+aidac ops init \
+  --output-dir ./aidac-operations \
+  --aidac-url http://host.docker.internal:8000 \
+  --viewer-token-file ~/.config/aidac/viewer.token
+
+aidac ops validate --directory ./aidac-operations
+```
+
+The bundle contains Prometheus scrape configuration, AI-DAC alerting rules, an
+Alertmanager receiver template, Grafana provisioning, a security-operations dashboard, an
+OpenTelemetry Collector configuration, a Docker Compose file, and a component-health TOML
+template. It references a viewer-token file but never copies the token into generated YAML.
+
+Before starting the bundle, create a private `grafana-admin-password` file and replace the
+Alertmanager webhook placeholder.
+
+```bash
+cd aidac-operations
+chmod 600 grafana-admin-password
+docker compose -f docker-compose.ops.yml up -d
+```
+
+## Distributed component health
+
+Configure HTTP health targets in TOML:
+
+```toml
+[[components]]
+name = "aidac-api"
+url = "http://127.0.0.1:8000/health/live"
+required = true
+timeout_seconds = 3.0
+
+[[components]]
+name = "prometheus"
+url = "http://127.0.0.1:9090/-/ready"
+required = true
+timeout_seconds = 3.0
+```
+
+Run an explicit health check and write a private JSON report:
+
+```bash
+aidac ops health \
+  --config ~/.config/aidac/components.toml \
+  --report ~/.local/state/aidac/component-health.json
+```
+
+To make the API and `/metrics` probe the same targets, set:
+
+```bash
+export AIDAC_COMPONENTS_FILE=~/.config/aidac/components.toml
+```
+
+Administrators can inspect the current result through
+`GET /api/v1/system/components`. Prometheus exposes `aidac_component_up`,
+`aidac_component_required`, and `aidac_component_probe_duration_seconds` without using target
+URLs or credentials as labels.
+
+A degraded health check can send a signed HTTPS notification:
+
+```bash
+export AIDAC_OPERATIONS_WEBHOOK_SECRET="replace-with-random-secret"
+aidac ops health \
+  --config ~/.config/aidac/components.toml \
+  --notify-webhook https://operations.example/aidac-health
+```
+
+## OpenTelemetry trace export
+
+AI-DAC can export API request spans with OTLP over HTTP. Dynamic alert identifiers are
+normalized before becoming span attributes.
+
+```bash
+export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://127.0.0.1:4318/v1/traces
+export OTEL_SERVICE_NAME=aidac-api
+aidac api serve
+```
+
+The exporter is disabled when no OTLP endpoint is configured. Production deployments should
+send OTLP to an OpenTelemetry Collector and then forward traces to the organization-approved
+backend.
 
 ## Web dashboard
 

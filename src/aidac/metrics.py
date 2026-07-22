@@ -6,9 +6,13 @@ import re
 import threading
 from collections import Counter, defaultdict
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from aidac import __version__
 from aidac.alert_store import AlertStoreError, load_alerts, store_info
+
+if TYPE_CHECKING:
+    from aidac.component_health import ComponentHealthRegistry
 
 _DYNAMIC_ALERT_PATH = re.compile(r"^/api/v1/alerts/[^/]+(?:/(?:ack|resolve))?$")
 
@@ -40,7 +44,11 @@ class MetricsRegistry:
             self._duration_sum[key] += max(duration_seconds, 0.0)
             self._duration_count[key] += 1
 
-    def render(self, alert_store: Path) -> str:
+    def render(
+        self,
+        alert_store: Path,
+        component_registry: ComponentHealthRegistry | None = None,
+    ) -> str:
         """Render Prometheus text exposition format."""
 
         with self._lock:
@@ -126,6 +134,9 @@ class MetricsRegistry:
                     'aidac_alert_store_up{backend="unknown"} 0',
                 ]
             )
+
+        if component_registry is not None:
+            lines.extend(component_registry.render_prometheus())
 
         return "\n".join(lines) + "\n"
 

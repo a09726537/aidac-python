@@ -12,7 +12,9 @@ import typer
 from rich.console import Console
 
 from aidac.alerting import DEFAULT_ALERT_LOG, DEFAULT_AUDIT_LOG
+from aidac.component_health import ComponentHealthError
 from aidac.structured_logging import configure_logging
+from aidac.telemetry import TelemetryError, configure_telemetry
 
 DEFAULT_API_TOKEN_ENV = "AIDAC_API_TOKEN"
 DEFAULT_VIEWER_TOKEN_ENV = "AIDAC_API_VIEWER_TOKEN"
@@ -123,6 +125,26 @@ def api_serve(
         Path | None,
         typer.Option("--log-file", help="Optional private application log file."),
     ] = None,
+    component_config: Annotated[
+        Path | None,
+        typer.Option(
+            "--component-config",
+            help="Optional distributed component-health TOML configuration.",
+        ),
+    ] = None,
+    otel_endpoint: Annotated[
+        str | None,
+        typer.Option(
+            "--otel-endpoint",
+            help=(
+                "Optional OTLP/HTTP traces endpoint; standard OTEL environment variables also work."
+            ),
+        ),
+    ] = None,
+    otel_service_name: Annotated[
+        str | None,
+        typer.Option("--otel-service-name", help="OpenTelemetry service name."),
+    ] = None,
     access_log: Annotated[
         bool,
         typer.Option("--access-log/--no-access-log", help="Enable HTTP access logs."),
@@ -162,6 +184,11 @@ def api_serve(
         _fail(error)
 
     try:
+        effective_component_config = _resolve_component_config(component_config)
+        telemetry = configure_telemetry(
+            endpoint=otel_endpoint,
+            service_name=otel_service_name,
+        )
         configure_logging(
             log_format=normalized_log_format,
             log_file=None if log_file is None else log_file.expanduser(),
@@ -170,6 +197,10 @@ def api_serve(
         import uvicorn
 
         from aidac.api import create_app
+    except TelemetryError as error:
+        _fail(error)
+    except ComponentHealthError as error:
+        _fail(error)
     except ImportError as error:
         console.print(
             "[red]AI-DAC API dependencies are missing. "
@@ -177,18 +208,24 @@ def api_serve(
         )
         raise typer.Exit(code=1) from error
 
-    application = create_app(
-        alert_log=alert_log,
-        audit_log=audit_log,
-        token_env=normalized_token_env,
-        viewer_token_env=normalized_viewer_env,
-        analyst_token_env=normalized_analyst_env,
-        admin_token_env=normalized_admin_env,
-        rate_limit_per_minute=rate_limit,
-        dashboard_enabled=dashboard,
-        dashboard_token_env=normalized_dashboard_token_env,
-        dashboard_session_minutes=dashboard_session_minutes,
-    )
+    try:
+        application = create_app(
+            alert_log=alert_log,
+            audit_log=audit_log,
+            token_env=normalized_token_env,
+            viewer_token_env=normalized_viewer_env,
+            analyst_token_env=normalized_analyst_env,
+            admin_token_env=normalized_admin_env,
+            rate_limit_per_minute=rate_limit,
+            dashboard_enabled=dashboard,
+            dashboard_token_env=normalized_dashboard_token_env,
+            dashboard_session_minutes=dashboard_session_minutes,
+            component_config=effective_component_config,
+            telemetry=telemetry,
+        )
+    except (ComponentHealthError, ValueError) as error:
+        telemetry.shutdown()
+        _fail(error)
     scheme = "https" if certificate is not None else "http"
     display_host = "localhost" if normalized_host in {"127.0.0.1", "::1"} else normalized_host
     console.print(f"[green]AI-DAC API listening on {scheme}://{display_host}:{port}[/green]")
@@ -197,16 +234,26 @@ def api_serve(
         console.print(f"[dim]Web dashboard: {scheme}://{display_host}:{port}/dashboard[/dim]")
     console.print("[dim]Press Ctrl+C to stop.[/dim]")
 
-    uvicorn.run(
-        application,
-        host=normalized_host,
-        port=port,
-        log_level=normalized_level,
-        access_log=access_log,
-        ssl_certfile=None if certificate is None else str(certificate),
-        ssl_keyfile=None if private_key is None else str(private_key),
-        proxy_headers=False,
-    )
+    try:
+        uvicorn.run(
+            application,
+            host=normalized_host,
+            port=port,
+            log_level=normalized_level,
+            access_log=access_log,
+            ssl_certfile=None if certificate is None else str(certificate),
+            ssl_keyfile=None if private_key is None else str(private_key),
+            proxy_headers=False,
+        )
+    finally:
+        telemetry.shutdown()
+
+
+def _resolve_component_config(value: Path | None) -> Path | None:
+    if value is not None:
+        return value.expanduser()
+    environment_value = os.getenv("AIDAC_COMPONENTS_FILE", "").strip()
+    return None if not environment_value else Path(environment_value).expanduser()
 
 
 def _validate_host(host: str) -> str:

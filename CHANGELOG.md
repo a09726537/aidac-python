@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.0
+
+- Added `aidac ops init` and `aidac ops validate` for a secret-free Prometheus, Alertmanager, Grafana, and OpenTelemetry Collector deployment bundle.
+- Added Prometheus rules for service availability, alert-store failures, critical alerts, distributed component failures, and API server errors.
+- Added a provisioned Grafana security-operations dashboard and Prometheus data source.
+- Added `aidac ops health` for bounded distributed HTTP component checks and private JSON reports.
+- Added signed operational webhook notifications for degraded component health.
+- Added authenticated component-health diagnostics and component gauges in `/metrics`.
+- Added optional OpenTelemetry OTLP/HTTP API request tracing through the `otel` extra.
+- Extended the systemd environment template for component checks and standard OpenTelemetry variables.
+- Preserved PostgreSQL, SQLite, JSONL, API, dashboard, audit, and systemd interfaces from AI-DAC 1.1.0.
+
 ## 1.1.0
 
 - Added an optional PostgreSQL alert lifecycle store selected with `AIDAC_ALERT_STORE_DSN`.
