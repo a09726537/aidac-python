@@ -3,7 +3,7 @@
 AI-DAC is an adaptive and explainable database-cybersecurity framework for detecting,
 monitoring, storing, and managing potentially dangerous SQL activity.
 
-Version **1.2.0** adds a generated Prometheus/Grafana operations bundle, distributed component health checks, signed operational notifications, and optional OpenTelemetry OTLP trace export while preserving the stable 1.x interfaces.
+Version **1.3.0** adds deterministic incident correlation, explainable Triple-Loop Learning assessments, incident-oriented API and CLI workflows, signed incident notifications, and incident observability while preserving the stable 1.x interfaces.
 
 ## Main capabilities
 
@@ -24,6 +24,10 @@ Version **1.2.0** adds a generated Prometheus/Grafana operations bundle, distrib
 - Distributed component health probes with bounded Prometheus labels
 - Optional OTLP/HTTP request tracing through OpenTelemetry
 - Signed operational webhook notifications for degraded component health
+- Deterministic incident correlation across related alerts and bounded time windows
+- Explainable Loop 1 detection, Loop 2 adaptation, and Loop 3 governance assessments
+- Signed incident notifications that exclude SQL text, tokens, credentials, and DSNs
+- Incident API, CLI, Prometheus rules, metrics, and Grafana panels
 - Local diagnostic and production-configuration commands
 
 ## Installation
@@ -139,6 +143,40 @@ aidac alerts resolve alrt_IDENTIFIER --actor analyst --note "Incident closed"
 aidac alerts prune --older-than-days 90 --status resolved --yes
 ```
 
+## Incident correlation and Triple-Loop Learning
+
+AI-DAC correlates current alert snapshots using source system, database, actor identity, and a
+bounded time window. Correlation is deterministic: it does not silently execute response actions
+or modify the protected database.
+
+```bash
+aidac incidents list
+aidac incidents list --status open --min-risk 0.8 --json
+aidac incidents show inc_IDENTIFIER
+aidac incidents correlate --output ~/.local/state/aidac/incidents.json
+```
+
+Each incident contains an explainable assessment with:
+
+- **Loop 1 — detection and explanation:** evidence count, signal strength, recurrence, and observed classifications;
+- **Loop 2 — response adaptation:** priority, response mode, evidence preservation, and recurrence handling;
+- **Loop 3 — governance reflection:** control-effectiveness review, policy review, documented rationale, and feedback candidacy.
+
+High and critical incidents require human-controlled review. AI-DAC does not automatically block,
+terminate, quarantine, or modify database activity.
+
+Send signed incident summaries without SQL statements or credentials:
+
+```bash
+export AIDAC_INCIDENT_WEBHOOK_SECRET="replace-with-random-secret"
+aidac incidents notify \
+  --webhook-url https://operations.example/aidac-incidents \
+  --min-severity high
+```
+
+The default correlation window is 30 minutes. Set `AIDAC_INCIDENT_WINDOW_MINUTES` for the API and
+service, or pass `--window-minutes` to incident CLI commands.
+
 ## Backup and restore
 
 Create a consistent backup:
@@ -200,6 +238,10 @@ Useful routes:
 - `GET /api/v1/alerts?limit=50&offset=0&q=production`
 - `GET /api/v1/alerts/summary`
 - `GET /api/v1/alerts/{alert_id}`
+- `GET /api/v1/incidents?status=open&min_risk=0.8`
+- `GET /api/v1/incidents/summary`
+- `GET /api/v1/incidents/{incident_id}`
+- `GET /api/v1/incidents/{incident_id}/assessment`
 - `POST /api/v1/alerts/{alert_id}/ack`
 - `POST /api/v1/alerts/{alert_id}/resolve`
 - `GET /api/v1/system/storage`
@@ -213,7 +255,7 @@ OpenAPI documentation is available at `http://127.0.0.1:8000/docs`.
 ## Prometheus metrics
 
 The authenticated `/metrics` endpoint exposes bounded HTTP counters, request-duration sums
-and counts, alert gauges by lifecycle status and severity, and alert-store availability.
+and counts, alert gauges, correlated-incident gauges, recurrence state, and alert-store availability.
 Prometheus can use the viewer token as a bearer token.
 
 ```bash
@@ -264,14 +306,14 @@ Generate version-controlled observability assets without embedding secrets:
 ```bash
 aidac ops init \
   --output-dir ./aidac-operations \
-  --aidac-url http://host.docker.internal:8000 \
+  --aidac-url http://127.0.0.1:8000 \
   --viewer-token-file ~/.config/aidac/viewer.token
 
 aidac ops validate --directory ./aidac-operations
 ```
 
-The bundle contains Prometheus scrape configuration, AI-DAC alerting rules, an
-Alertmanager receiver template, Grafana provisioning, a security-operations dashboard, an
+The bundle contains Prometheus scrape configuration, AI-DAC service and incident alerting rules, an
+Alertmanager receiver template, Grafana provisioning, an incident-aware security-operations dashboard, an
 OpenTelemetry Collector configuration, a Docker Compose file, and a component-health TOML
 template. It references a viewer-token file but never copies the token into generated YAML.
 
@@ -281,6 +323,8 @@ Alertmanager webhook placeholder.
 ```bash
 cd aidac-operations
 chmod 600 grafana-admin-password
+export AIDAC_UID="$(id -u)"
+export AIDAC_GID="$(id -g)"
 docker compose -f docker-compose.ops.yml up -d
 ```
 

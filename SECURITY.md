@@ -23,3 +23,11 @@ For remote API access:
 
 AI-DAC is an observation and decision-support tool. It does not replace database access
 controls, backups, network segmentation, patching, or human incident-response procedures.
+
+## Incident correlation and learning safeguards
+
+AI-DAC 1.3 incident correlation operates only on current alert snapshots and uses bounded,
+deterministic grouping rules. Incident notification payloads intentionally omit SQL text, alert
+identifiers, credentials, bearer tokens, webhook secrets, and database connection strings.
+Triple-Loop Learning output is advisory and explainable; high-impact response or policy changes
+remain subject to human approval and organizational governance.

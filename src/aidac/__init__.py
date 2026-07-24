@@ -7,6 +7,8 @@ from aidac.connectors import (
     PostgreSQLConnectorError,
 )
 from aidac.engine import AIDAC
+from aidac.incidents import IncidentError, IncidentStatus, correlate_alerts
+from aidac.learning import TripleLoopAssessment, assess_incident
 from aidac.models import (
     DatabaseEvent,
     DetectionResult,
@@ -19,13 +21,18 @@ __all__ = [
     "AlertStatus",
     "AlertStoreError",
     "DatabaseEvent",
+    "IncidentError",
+    "IncidentStatus",
     "DetectionResult",
     "PostgreSQLAuditConfig",
     "PostgreSQLAuditConnector",
     "PostgreSQLConnectorError",
     "SecurityDecision",
     "Severity",
+    "TripleLoopAssessment",
+    "assess_incident",
+    "correlate_alerts",
 ]
 
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"

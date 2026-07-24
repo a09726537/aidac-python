@@ -49,6 +49,14 @@ from aidac.dashboard import (
     DEFAULT_DASHBOARD_TOKEN_ENV,
     install_dashboard_routes,
 )
+from aidac.incidents import (
+    IncidentError,
+    IncidentStatus,
+    correlate_alerts,
+    get_incident,
+    incident_summary,
+    query_incidents,
+)
 from aidac.metrics import MetricsRegistry, normalize_metric_path
 from aidac.structured_logging import get_logger
 from aidac.telemetry import Telemetry
@@ -59,6 +67,8 @@ DEFAULT_ANALYST_TOKEN_ENV = "AIDAC_API_ANALYST_TOKEN"
 DEFAULT_ADMIN_TOKEN_ENV = "AIDAC_API_ADMIN_TOKEN"
 MINIMUM_API_TOKEN_LENGTH = 32
 DEFAULT_RATE_LIMIT_PER_MINUTE = 120
+DEFAULT_INCIDENT_WINDOW_MINUTES = 30
+DEFAULT_INCIDENT_WINDOW_ENV = "AIDAC_INCIDENT_WINDOW_MINUTES"
 
 
 class APIRole(StrEnum):
@@ -128,6 +138,27 @@ class AlertSummaryResponse(BaseModel):
     severity_counts: dict[str, int]
 
 
+class IncidentListResponse(BaseModel):
+    """Paginated correlated incident response."""
+
+    incident_count: int
+    total: int
+    limit: int
+    offset: int
+    next_offset: int | None
+    incidents: list[dict[str, Any]]
+
+
+class IncidentSummaryResponse(BaseModel):
+    """Aggregate correlated incident counts."""
+
+    incident_count: int
+    active_count: int
+    status_counts: dict[str, int]
+    severity_counts: dict[str, int]
+    maximum_active_risk: float
+
+
 class _RateLimiter:
     """Small in-memory sliding-window limiter for one service process."""
 
@@ -169,6 +200,7 @@ def create_app(
     dashboard_session_minutes: int = DEFAULT_DASHBOARD_SESSION_MINUTES,
     component_config: Path | None = None,
     telemetry: Telemetry | None = None,
+    incident_window_minutes: int | None = None,
 ) -> FastAPI:
     """Create a configured AI-DAC FastAPI application."""
 
@@ -193,6 +225,16 @@ def create_app(
     )
     telemetry_handle = telemetry or Telemetry()
     logger = get_logger()
+    if incident_window_minutes is None:
+        raw_window = os.getenv(DEFAULT_INCIDENT_WINDOW_ENV, str(DEFAULT_INCIDENT_WINDOW_MINUTES))
+        try:
+            effective_incident_window = int(raw_window)
+        except ValueError as error:
+            raise ValueError(f"{DEFAULT_INCIDENT_WINDOW_ENV} must be an integer.") from error
+    else:
+        effective_incident_window = incident_window_minutes
+    if not 1 <= effective_incident_window <= 10_080:
+        raise ValueError("Incident correlation window must be between 1 and 10080 minutes.")
 
     app = FastAPI(
         title="AI-DAC Alert API",
@@ -200,7 +242,8 @@ def create_app(
         description=(
             "Role-aware access to the AI-DAC alert lifecycle store. "
             "Viewer tokens are read-only; analyst tokens can change alert state; "
-            "admin tokens can also inspect system diagnostics."
+            "admin tokens can also inspect system diagnostics. Correlated incidents include "
+            "deterministic Triple-Loop Learning assessments."
         ),
         docs_url="/docs",
         redoc_url=None,
@@ -338,6 +381,19 @@ def create_app(
         )
         return JSONResponse(status_code=error_status, content={"detail": str(error)})
 
+    @app.exception_handler(IncidentError)
+    async def incident_error_handler(
+        request: Request,
+        error: IncidentError,
+    ) -> JSONResponse:
+        del request
+        error_status = (
+            status.HTTP_404_NOT_FOUND
+            if str(error).startswith("Incident not found:")
+            else status.HTTP_400_BAD_REQUEST
+        )
+        return JSONResponse(status_code=error_status, content={"detail": str(error)})
+
     @app.exception_handler(AlertingError)
     async def alerting_error_handler(
         request: Request,
@@ -428,7 +484,11 @@ def create_app(
         component_results = check_components(component_targets) if component_targets else []
         component_registry.replace(component_results)
         with store_lock:
-            body = metrics.render(expanded_alert_log, component_registry)
+            body = metrics.render(
+                expanded_alert_log,
+                component_registry,
+                incident_window_minutes=effective_incident_window,
+            )
         return PlainTextResponse(
             content=body,
             media_type="text/plain; version=0.0.4; charset=utf-8",
@@ -501,6 +561,107 @@ def create_app(
             next_offset=next_offset,
             alerts=alerts,
         )
+
+    @app.get(
+        "/api/v1/incidents/summary",
+        response_model=IncidentSummaryResponse,
+        tags=["incidents"],
+    )
+    def incidents_summary(
+        principal: APIPrincipal = viewer_authentication,
+    ) -> IncidentSummaryResponse:
+        del principal
+        with store_lock:
+            incidents = correlate_alerts(
+                load_alerts(expanded_alert_log),
+                window_minutes=effective_incident_window,
+            )
+        return IncidentSummaryResponse(**incident_summary(incidents))
+
+    @app.get(
+        "/api/v1/incidents",
+        response_model=IncidentListResponse,
+        tags=["incidents"],
+    )
+    def incidents_list(
+        principal: APIPrincipal = viewer_authentication,
+        incident_status: Annotated[
+            IncidentStatus | None,
+            Query(alias="status", description="Optional derived incident lifecycle status."),
+        ] = None,
+        severity: Annotated[
+            str | None,
+            Query(description="Optional exact incident severity filter.", max_length=30),
+        ] = None,
+        minimum_risk: Annotated[
+            float,
+            Query(alias="min_risk", ge=0.0, le=1.0),
+        ] = 0.0,
+        search: Annotated[
+            str | None,
+            Query(alias="q", description="Search incident identity or classification."),
+        ] = None,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 50,
+        offset: Annotated[int, Query(ge=0, le=10_000_000)] = 0,
+    ) -> IncidentListResponse:
+        del principal
+        with store_lock:
+            correlated = correlate_alerts(
+                load_alerts(expanded_alert_log),
+                window_minutes=effective_incident_window,
+            )
+            incidents, total = query_incidents(
+                correlated,
+                status=incident_status,
+                severity=severity,
+                minimum_risk=minimum_risk,
+                search=search,
+                limit=limit,
+                offset=offset,
+            )
+        next_offset = offset + len(incidents) if offset + len(incidents) < total else None
+        return IncidentListResponse(
+            incident_count=len(incidents),
+            total=total,
+            limit=limit,
+            offset=offset,
+            next_offset=next_offset,
+            incidents=incidents,
+        )
+
+    @app.get(
+        "/api/v1/incidents/{incident_id}",
+        response_model=dict[str, Any],
+        tags=["incidents"],
+    )
+    def incidents_show(
+        incident_id: str,
+        principal: APIPrincipal = viewer_authentication,
+    ) -> dict[str, Any]:
+        del principal
+        with store_lock:
+            incidents = correlate_alerts(
+                load_alerts(expanded_alert_log),
+                window_minutes=effective_incident_window,
+            )
+        return get_incident(incidents, incident_id)
+
+    @app.get(
+        "/api/v1/incidents/{incident_id}/assessment",
+        response_model=dict[str, Any],
+        tags=["incidents"],
+    )
+    def incidents_assessment(
+        incident_id: str,
+        principal: APIPrincipal = viewer_authentication,
+    ) -> dict[str, Any]:
+        del principal
+        with store_lock:
+            incidents = correlate_alerts(
+                load_alerts(expanded_alert_log),
+                window_minutes=effective_incident_window,
+            )
+        return dict(get_incident(incidents, incident_id)["triple_loop"])
 
     @app.get(
         "/api/v1/alerts/{alert_id}",

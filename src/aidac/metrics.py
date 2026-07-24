@@ -10,11 +10,13 @@ from typing import TYPE_CHECKING
 
 from aidac import __version__
 from aidac.alert_store import AlertStoreError, load_alerts, store_info
+from aidac.incidents import IncidentStatus, correlate_alerts
 
 if TYPE_CHECKING:
     from aidac.component_health import ComponentHealthRegistry
 
 _DYNAMIC_ALERT_PATH = re.compile(r"^/api/v1/alerts/[^/]+(?:/(?:ack|resolve))?$")
+_DYNAMIC_INCIDENT_PATH = re.compile(r"^/api/v1/incidents/[^/]+(?:/assessment)?$")
 
 
 class MetricsRegistry:
@@ -48,6 +50,8 @@ class MetricsRegistry:
         self,
         alert_store: Path,
         component_registry: ComponentHealthRegistry | None = None,
+        *,
+        incident_window_minutes: int = 30,
     ) -> str:
         """Render Prometheus text exposition format."""
 
@@ -126,6 +130,40 @@ class MetricsRegistry:
                     f'aidac_alert_store_up{{backend="{_escape(backend)}"}} 1',
                 ]
             )
+            incidents = correlate_alerts(alerts, window_minutes=incident_window_minutes)
+            incident_counts: Counter[tuple[str, str]] = Counter(
+                (str(item.get("status", "unknown")), str(item.get("severity", "unknown")))
+                for item in incidents
+            )
+            lines.extend(
+                [
+                    "# HELP aidac_incidents_total Current correlated incidents "
+                    "by status and severity.",
+                    "# TYPE aidac_incidents_total gauge",
+                ]
+            )
+            for (incident_status, incident_severity), count in sorted(incident_counts.items()):
+                lines.append(
+                    "aidac_incidents_total"
+                    f'{{status="{_escape(incident_status)}",'
+                    f'severity="{_escape(incident_severity)}"}} '
+                    f"{count}"
+                )
+            active = [
+                item for item in incidents if item.get("status") != IncidentStatus.RESOLVED.value
+            ]
+            recurrence_max = max(
+                (int(item.get("occurrence_count", 0)) for item in active),
+                default=0,
+            )
+            lines.extend(
+                [
+                    "# HELP aidac_incident_recurrence_max Maximum occurrences "
+                    "in an active incident.",
+                    "# TYPE aidac_incident_recurrence_max gauge",
+                    f"aidac_incident_recurrence_max {recurrence_max}",
+                ]
+            )
         except AlertStoreError:
             lines.extend(
                 [
@@ -151,6 +189,10 @@ def normalize_metric_path(path: str) -> str:
         if normalized.endswith("/resolve"):
             return "/api/v1/alerts/{alert_id}/resolve"
         return "/api/v1/alerts/{alert_id}"
+    if _DYNAMIC_INCIDENT_PATH.fullmatch(normalized):
+        if normalized.endswith("/assessment"):
+            return "/api/v1/incidents/{incident_id}/assessment"
+        return "/api/v1/incidents/{incident_id}"
     return normalized
 
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.0
+
+- Added deterministic incident correlation by source system, database, actor identity, and bounded time window.
+- Added derived `open`, `investigating`, and `resolved` incident states from alert lifecycle snapshots.
+- Added explainable Triple-Loop Learning assessments covering detection, response adaptation, and governance reflection.
+- Added `aidac incidents list`, `show`, `correlate`, and `notify` commands.
+- Added signed incident notification payloads that exclude SQL text, credentials, tokens, and DSNs.
+- Added viewer-authorized incident list, summary, detail, and assessment API endpoints.
+- Added incident and recurrence Prometheus gauges with bounded labels and normalized incident API paths.
+- Added critical-incident and recurring-incident Prometheus rules plus Grafana incident panels.
+- Added `AIDAC_INCIDENT_WINDOW_MINUTES` and incident webhook guidance to the hardened service environment template.
+- Preserved alert storage, PostgreSQL collection, API roles, dashboard, audit, observability, and systemd interfaces from AI-DAC 1.2.0.
+
 ## 1.2.0
 
 - Added `aidac ops init` and `aidac ops validate` for a secret-free Prometheus, Alertmanager, Grafana, and OpenTelemetry Collector deployment bundle.

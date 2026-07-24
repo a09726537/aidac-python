@@ -42,7 +42,7 @@ def ops_init(
     aidac_url: Annotated[
         str,
         typer.Option("--aidac-url", help="Base URL Prometheus uses to reach AI-DAC."),
-    ] = "http://host.docker.internal:8000",
+    ] = "http://127.0.0.1:8000",
     viewer_token_file: Annotated[
         Path,
         typer.Option(
@@ -222,6 +222,10 @@ def generate_operations_bundle(
     generated: list[Path] = []
     destination.mkdir(parents=True, exist_ok=False)
     destination.chmod(0o700)
+    for relative in ("prometheus-data", "alertmanager-data", "grafana-data"):
+        data_directory = destination / relative
+        data_directory.mkdir(parents=True, exist_ok=True)
+        data_directory.chmod(0o700)
     for relative, content in files.items():
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -302,47 +306,53 @@ def _docker_compose(viewer_token_file: Path) -> str:
     return f"""services:
   prometheus:
     image: prom/prometheus:latest
+    user: "${{AIDAC_UID:-1000}}:${{AIDAC_GID:-1000}}"
+    network_mode: host
     command:
       - --config.file=/etc/prometheus/prometheus.yml
-    ports:
-      - "9090:9090"
+      - --web.listen-address=127.0.0.1:9090
+      - --storage.tsdb.path=/prometheus/data
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/rules:/etc/prometheus/rules:ro
+      - ./prometheus-data:/prometheus/data
       - {token_volume}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
   alertmanager:
     image: prom/alertmanager:latest
+    user: "${{AIDAC_UID:-1000}}:${{AIDAC_GID:-1000}}"
+    network_mode: host
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
-    ports:
-      - "9093:9093"
+      - --web.listen-address=127.0.0.1:9093
+      - --storage.path=/alertmanager
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./alertmanager-data:/alertmanager
 
   grafana:
     image: grafana/grafana:latest
-    ports:
-      - "3000:3000"
+    user: "${{AIDAC_UID:-1000}}:${{AIDAC_GID:-1000}}"
+    network_mode: host
     environment:
+      GF_SERVER_HTTP_ADDR: 127.0.0.1
+      GF_SERVER_HTTP_PORT: "3000"
       GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./grafana-data:/var/lib/grafana
       - ./grafana-admin-password:/run/secrets/grafana_admin_password:ro
     depends_on:
       - prometheus
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
+    user: "${{AIDAC_UID:-1000}}:${{AIDAC_GID:-1000}}"
+    network_mode: host
     command:
       - --config=/etc/otelcol-contrib/config.yaml
-    ports:
-      - "4317:4317"
-      - "4318:4318"
     volumes:
       - ./otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
 """
@@ -364,7 +374,7 @@ rule_files:
 alerting:
   alertmanagers:
     - static_configs:
-        - targets: ["alertmanager:9093"]
+        - targets: ["127.0.0.1:9093"]
 
 scrape_configs:
   - job_name: aidac
@@ -411,6 +421,25 @@ def _prometheus_rules() -> str:
           summary: Critical database-security alerts require review
           description: AI-DAC currently contains one or more critical alerts.
 
+      - alert: AIDACCriticalIncidentOpen
+        expr: sum(aidac_incidents_total{severity="critical",status!="resolved"}) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Critical correlated AI-DAC incident is active
+          description: >-
+            One or more critical correlated database-security incidents require human review.
+
+      - alert: AIDACRecurringIncidentActivity
+        expr: aidac_incident_recurrence_max >= 3
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Recurrent activity detected in an AI-DAC incident
+          description: An active correlated incident contains at least three observed occurrences.
+
       - alert: AIDACRequiredComponentDown
         expr: aidac_component_up == 0 and on(component) aidac_component_required == 1
         for: 2m
@@ -455,7 +484,7 @@ datasources:
     uid: aidac-prometheus
     type: prometheus
     access: proxy
-    url: http://prometheus:9090
+    url: http://127.0.0.1:9090
     isDefault: true
     editable: false
 """
@@ -490,29 +519,44 @@ def _grafana_dashboard() -> dict[str, Any]:
                 0,
             ),
             _stat_panel(3, "Alert store up", "min(aidac_alert_store_up)", 16, 0),
-            _timeseries_panel(
+            _stat_panel(
                 4,
+                "Active incidents",
+                'sum(aidac_incidents_total{status!="resolved"})',
+                0,
+                5,
+            ),
+            _stat_panel(
+                5,
+                "Critical active incidents",
+                'sum(aidac_incidents_total{severity="critical",status!="resolved"})',
+                8,
+                5,
+            ),
+            _stat_panel(6, "Maximum recurrence", "aidac_incident_recurrence_max", 16, 5),
+            _timeseries_panel(
+                7,
                 "API request rate",
                 "sum by (status) (rate(aidac_http_requests_total[5m]))",
                 0,
-                5,
+                10,
                 12,
             ),
             _timeseries_panel(
-                5,
+                8,
                 "Request duration average",
                 "sum(rate(aidac_http_request_duration_seconds_sum[5m])) / "
                 "clamp_min(sum(rate(aidac_http_request_duration_seconds_count[5m])), 1e-9)",
                 12,
-                5,
+                10,
                 12,
             ),
             _timeseries_panel(
-                6,
+                9,
                 "Distributed components",
                 "aidac_component_up",
                 0,
-                13,
+                18,
                 24,
             ),
         ],
@@ -573,9 +617,9 @@ def _otel_collector_config() -> str:
   otlp:
     protocols:
       grpc:
-        endpoint: 0.0.0.0:4317
+        endpoint: 127.0.0.1:4317
       http:
-        endpoint: 0.0.0.0:4318
+        endpoint: 127.0.0.1:4318
 
 processors:
   batch:
@@ -651,6 +695,8 @@ version-controlled configuration.
 
 ```bash
 chmod 600 grafana-admin-password
+export AIDAC_UID="$(id -u)"
+export AIDAC_GID="$(id -g)"
 docker compose -f docker-compose.ops.yml up -d
 ```
 
