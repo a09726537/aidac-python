@@ -972,35 +972,6 @@ https://github.com/a09726537/aidac-python
   license   = {Apache-2.0}
 }
 ```
-# Citation
-
-If AI-DAC contributes to your research, please cite both the software repository and the associated doctoral research where appropriate.
-
-## Software Citation
-
-William Kandolo.
-
-**AI-DAC: Artificial Intelligence–Driven Anomaly Detection and Control.**
-
-GitHub Repository.
-
-```text
-https://github.com/a09726537/AI-DAC
-```
-
-### BibTeX
-
-```bibtex
-@software{kandolo2026aidac,
-  author  = {William Kandolo},
-  title   = {AI-DAC: Artificial Intelligence--Driven Anomaly Detection and Control},
-  year    = {2026},
-  url     = {https://github.com/a09726537/AI-DAC},
-  license = {Apache-2.0}
-}
-```
-
----
 
 # Contributing
 
