@@ -1,59 +1,188 @@
 # AI-DAC Python Library
 
-AI-DAC is an adaptive and explainable database-cybersecurity framework for detecting,
-monitoring, storing, and managing potentially dangerous SQL activity.
+> **Artificial Intelligence–Driven Anomaly Detection and Control**
+>
+> **Reference Software Implementation for Lifecycle-Aware Database Cybersecurity**
 
-Version **1.3.0** adds deterministic incident correlation, explainable Triple-Loop Learning assessments, incident-oriented API and CLI workflows, signed incident notifications, and incident observability while preserving the stable 1.x interfaces.
+<p align="center">
 
-## Main capabilities
+![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
+![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)
+![Status](https://img.shields.io/badge/Status-Research-orange.svg)
+![Stage](https://img.shields.io/badge/Stage-Preparatory%20Software-blue.svg)
+![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows-lightgrey.svg)
 
-- SQL event normalization, anomaly detection, risk scoring, and explanations
+</p>
+
+---
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Research Status](#research-status)
+- [Version 1.3.0](#version-130)
+- [Main Capabilities](#main-capabilities)
+- [Installation](#installation)
+- [Basic Analysis](#basic-analysis)
+- [Alert Storage](#alert-storage)
+- [Alert Lifecycle and Search](#alert-lifecycle-and-search)
+- [Incident Correlation and Triple-Loop Learning](#incident-correlation-and-triple-loop-learning)
+- [Backup and Restore](#backup-and-restore)
+- [Tamper-Evident Audit Log](#tamper-evident-audit-log)
+- [Role-Aware REST API](#role-aware-rest-api)
+- [Prometheus Metrics](#prometheus-metrics)
+- [Structured Logging](#structured-logging)
+- [User-Level systemd Deployment](#user-level-systemd-deployment)
+- [Operations Bundle](#operations-bundle)
+- [Distributed Component Health](#distributed-component-health)
+- [OpenTelemetry Trace Export](#opentelemetry-trace-export)
+- [Web Dashboard](#web-dashboard)
+- [Production Configuration](#production-configuration)
+- [Diagnostics](#diagnostics)
+- [Network Safety](#network-safety)
+- [Research Context](#research-context)
+- [Citation](#citation)
+- [Contributing](#contributing)
+- [Reproducibility Policy](#reproducibility-policy)
+- [License](#license)
+- [Acknowledgements](#acknowledgements)
+- [Contact](#contact)
+
+
+
+## Overview
+
+AI-DAC (**Artificial Intelligence–Driven Anomaly Detection and Control**) is an adaptive and explainable database cybersecurity framework for detecting, monitoring, correlating, storing, and managing potentially dangerous SQL activity in relational database environments.
+
+The project combines anomaly detection, deterministic incident correlation, explainable decision support, operational monitoring, and governance-aware assessment within a modular Python software framework intended for cybersecurity research and engineering.
+
+AI-DAC is being developed as the **reference software implementation** supporting the doctoral research project:
+
+> **Triple-Loop Learning for Lifecycle-Aware Database Cybersecurity: A Recursive Learning Framework**
+
+The software repository and the doctoral dissertation are complementary but distinct research outputs.
+
+- The **repository** documents the evolving software implementation, APIs, operational tooling, testing infrastructure, and engineering components.
+- The **doctoral dissertation** presents the scientific framework, research methodology, theoretical contributions, experimental design, and confirmatory evaluation.
+
+---
+
+## Research Status
+
+**Current status:** **Preparatory Research Software**
+
+This repository contains the actively developed implementation of AI-DAC, including:
+
+- SQL anomaly detection
+- Database monitoring
+- Incident correlation
+- Triple-Loop Learning assessments
+- REST API
+- Operational dashboard
+- Observability
+- OpenTelemetry integration
+- Prometheus metrics
+- Alert lifecycle management
+- Configuration management
+- Python package
+- Command-line interface
+
+This repository **does not** constitute the protocol-frozen doctoral evaluation package.
+
+Future confirmatory evaluation artifacts—including benchmark manifests, protocol documentation, dataset provenance, statistical analyses, reproducibility records, and archived evaluation environments—will be released separately after the protocol-freeze stage of the doctoral research.
+
+---
+
+## Version 1.3.0
+
+Version **1.3.0** introduces:
+
+- deterministic incident correlation;
+- explainable Triple-Loop Learning assessments;
+- incident-oriented API and CLI workflows;
+- signed incident notifications;
+- distributed operational observability;
+- hardened monitoring infrastructure; and
+- improved operational diagnostics,
+
+## Main Capabilities
+
+AI-DAC currently provides:
+
+- SQL event normalization, anomaly detection, risk scoring, and explainable assessments
 - Read-only PostgreSQL audit collection and continuous monitoring
-- SQLite alert store with schema migrations and transactional lifecycle updates
-- Optional PostgreSQL lifecycle store selected securely through environment variables
+- SQLite-based alert storage with schema migrations and transactional lifecycle updates
+- Optional PostgreSQL lifecycle storage configured securely through environment variables
 - Import compatibility for legacy JSONL alert logs
-- Alert deduplication with `new`, `acknowledged`, and `resolved` states
-- Tamper-evident JSONL audit log with sequence numbers and SHA-256 hash chaining
-- Role-aware REST API with `viewer`, `analyst`, and `admin` tokens
+- Alert deduplication with `new`, `acknowledged`, and `resolved` lifecycle states
+- Tamper-evident JSONL audit logging with sequence numbers and SHA-256 hash chaining
+- Role-aware REST API access using `viewer`, `analyst`, and `admin` tokens
 - Pagination, filtering, search, and per-token API rate limiting
 - Authenticated server-rendered security-operations dashboard
 - Consistent alert-store backup and validated restore commands
-- Prometheus-compatible metrics and structured JSON application logs
-- Hardened user-level systemd service generation and management
+- Prometheus-compatible metrics and structured JSON application logging
+- Hardened user-level `systemd` service generation and management
 - Generated Prometheus, Alertmanager, Grafana, and OpenTelemetry Collector assets
-- Distributed component health probes with bounded Prometheus labels
+- Distributed component-health probes with bounded Prometheus labels
 - Optional OTLP/HTTP request tracing through OpenTelemetry
 - Signed operational webhook notifications for degraded component health
-- Deterministic incident correlation across related alerts and bounded time windows
-- Explainable Loop 1 detection, Loop 2 adaptation, and Loop 3 governance assessments
+- Deterministic correlation of related alerts within bounded time windows
+- Explainable Loop 1, Loop 2, and Loop 3 incident assessments
 - Signed incident notifications that exclude SQL text, tokens, credentials, and DSNs
-- Incident API, CLI, Prometheus rules, metrics, and Grafana panels
-- Local diagnostic and production-configuration commands
+- Incident-oriented API, CLI, metrics, Prometheus rules, and Grafana panels
+- Local diagnostics and production-configuration commands
+
+---
 
 ## Installation
+
+### Install the Core Package
 
 ```bash
 python -m pip install aidac-sec
 ```
 
-Install the REST API and dashboard dependencies:
+### Install REST API and Dashboard Support
 
 ```bash
 python -m pip install "aidac-sec[api]"
 ```
 
-Install optional OpenTelemetry OTLP/HTTP trace export:
+### Install OpenTelemetry Export Support
 
 ```bash
 python -m pip install "aidac-sec[otel]"
 ```
 
-## Basic analysis
+A virtual environment is recommended:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install "aidac-sec[api,otel]"
+```
+
+On Windows PowerShell:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install "aidac-sec[api,otel]"
+```
+
+---
+
+## Basic Analysis
+
+AI-DAC can be used directly from Python to analyze a database event.
 
 ```python
 from aidac import AIDAC, DatabaseEvent
 
 engine = AIDAC()
+
 event = DatabaseEvent(
     query="DROP DATABASE production;",
     username="administrator",
@@ -62,10 +191,15 @@ event = DatabaseEvent(
 )
 
 decision = engine.analyze(event)
+
 print(decision.risk_score)
 print(decision.severity.value)
 print(decision.recommended_action)
 ```
+
+The resulting decision object provides the calculated risk score, severity classification, and recommended response.
+
+### Basic CLI Usage
 
 ```bash
 aidac version
@@ -74,17 +208,23 @@ aidac postgres scan --min-risk 0.5
 aidac postgres watch --interval 5 --min-severity high
 ```
 
-## Alert storage
+The PostgreSQL commands operate in monitoring and analysis mode. They do not automatically block, terminate, quarantine, or modify database activity.
 
-### SQLite default
+---
 
-AI-DAC uses this store by default:
+## Alert Storage
+
+AI-DAC stores alert lifecycle information in a local SQLite database by default and can optionally use PostgreSQL for lifecycle persistence.
+
+### SQLite Default
+
+The default alert store is:
 
 ```text
 ~/.local/state/aidac/alerts.db
 ```
 
-Initialize or inspect it:
+Initialize or inspect the store:
 
 ```bash
 aidac storage init
@@ -92,9 +232,13 @@ aidac storage info
 aidac storage info --json
 ```
 
+SQLite is suitable for local development, single-user analysis, laboratory workflows, and lightweight deployments.
+
+---
+
 ### Upgrade from AI-DAC 0.6–0.9
 
-Import the previous JSONL lifecycle log:
+Import a legacy JSONL lifecycle log into the current storage backend:
 
 ```bash
 aidac storage migrate-jsonl \
@@ -102,25 +246,46 @@ aidac storage migrate-jsonl \
   --destination ~/.local/state/aidac/alerts.db
 ```
 
-The JSONL backend remains supported when a path ending in `.jsonl` is supplied explicitly.
+The legacy JSONL backend remains supported when a path ending in `.jsonl` is explicitly supplied.
 
-### Optional PostgreSQL lifecycle store
+---
 
-Set a dedicated writable PostgreSQL DSN outside the repository. The collector account
-`aidac_reader` can remain read-only; use a separate least-privilege role for lifecycle data.
+### Optional PostgreSQL Lifecycle Store
+
+For multi-process or service-oriented deployments, AI-DAC can use a dedicated PostgreSQL lifecycle store.
+
+Configure the connection outside the repository:
 
 ```bash
 export AIDAC_ALERT_STORE_DSN="postgresql://aidac_app:REDACTED@127.0.0.1:5432/aidac_pgsql"
 export AIDAC_ALERT_STORE_SCHEMA="aidac"
+
 aidac storage init
 aidac storage info
 ```
 
-When `AIDAC_ALERT_STORE_DSN` is present, alert lifecycle commands, the API, dashboard,
-monitoring process, backup, restore, and diagnostics use PostgreSQL. The DSN is never
-returned by API or diagnostic output. `AIDAC_ALERT_STORE_SCHEMA` defaults to `aidac`.
+Use a dedicated least-privilege PostgreSQL role for lifecycle data.
 
-Import a previous JSONL lifecycle log directly into PostgreSQL:
+The audit collector account, such as `aidac_reader`, should remain read-only and should not be reused as the lifecycle-store writer account.
+
+When `AIDAC_ALERT_STORE_DSN` is configured, the following components use PostgreSQL:
+
+- alert lifecycle commands;
+- REST API;
+- dashboard;
+- monitoring process;
+- backup and restore;
+- diagnostic commands.
+
+The DSN is not returned through API or diagnostic output.
+
+`AIDAC_ALERT_STORE_SCHEMA` defaults to:
+
+```text
+aidac
+```
+
+Import a previous JSONL lifecycle log into the selected PostgreSQL store:
 
 ```bash
 aidac storage migrate-jsonl \
@@ -128,209 +293,463 @@ aidac storage migrate-jsonl \
   --destination ~/.local/state/aidac/alerts.db
 ```
 
-For PostgreSQL, backups are private application-level JSON snapshots that can be restored
-with the same `aidac storage restore ... --yes` command.
+For PostgreSQL lifecycle storage, AI-DAC creates private application-level JSON backup snapshots that can be restored using the standard restore command.
 
-## Alert lifecycle and search
+---
+
+## Alert Lifecycle and Search
+
+AI-DAC supports alert inspection, filtering, acknowledgement, resolution, and controlled retention.
 
 ```bash
 aidac alerts list
 aidac alerts list --status new --severity critical --min-risk 0.8
 aidac alerts list --search production --limit 25 --offset 0 --json
 aidac alerts show alrt_IDENTIFIER
-aidac alerts ack alrt_IDENTIFIER --actor analyst --note "Review started"
-aidac alerts resolve alrt_IDENTIFIER --actor analyst --note "Incident closed"
-aidac alerts prune --older-than-days 90 --status resolved --yes
+aidac alerts ack alrt_IDENTIFIER \
+  --actor analyst \
+  --note "Review started"
+aidac alerts resolve alrt_IDENTIFIER \
+  --actor analyst \
+  --note "Incident closed"
+aidac alerts prune \
+  --older-than-days 90 \
+  --status resolved \
+  --yes
 ```
 
-## Incident correlation and Triple-Loop Learning
+Alert lifecycle states include:
 
-AI-DAC correlates current alert snapshots using source system, database, actor identity, and a
-bounded time window. Correlation is deterministic: it does not silently execute response actions
-or modify the protected database.
+- `new`
+- `acknowledged`
+- `resolved`
+
+Lifecycle transitions are recorded transactionally and remain auditable.
+
+---
+
+## Incident Correlation and Triple-Loop Learning
+
+AI-DAC correlates current alert snapshots using:
+
+- source system;
+- database;
+- actor identity; and
+- a bounded correlation window.
+
+Correlation is deterministic.
+
+It does not silently execute response actions or modify the protected database.
+
+### Incident Commands
 
 ```bash
 aidac incidents list
 aidac incidents list --status open --min-risk 0.8 --json
 aidac incidents show inc_IDENTIFIER
-aidac incidents correlate --output ~/.local/state/aidac/incidents.json
+aidac incidents correlate \
+  --output ~/.local/state/aidac/incidents.json
 ```
 
-Each incident contains an explainable assessment with:
+Each correlated incident contains an explainable Triple-Loop Learning assessment.
 
-- **Loop 1 — detection and explanation:** evidence count, signal strength, recurrence, and observed classifications;
-- **Loop 2 — response adaptation:** priority, response mode, evidence preservation, and recurrence handling;
-- **Loop 3 — governance reflection:** control-effectiveness review, policy review, documented rationale, and feedback candidacy.
+### Loop 1 — Detection and Explanation
 
-High and critical incidents require human-controlled review. AI-DAC does not automatically block,
-terminate, quarantine, or modify database activity.
+Loop 1 evaluates the immediate operational evidence, including:
 
-Send signed incident summaries without SQL statements or credentials:
+- evidence count;
+- signal strength;
+- recurrence;
+- observed classifications;
+- alert severity;
+- risk indicators.
+
+### Loop 2 — Response Adaptation
+
+Loop 2 evaluates the response strategy, including:
+
+- response priority;
+- response mode;
+- evidence preservation;
+- recurrence handling;
+- escalation requirements.
+
+### Loop 3 — Governance Reflection
+
+Loop 3 evaluates the broader governance implications, including:
+
+- control-effectiveness review;
+- policy review;
+- documented rationale;
+- feedback candidacy;
+- long-term improvement considerations.
+
+High-severity and critical incidents require human-controlled review.
+
+AI-DAC does not automatically:
+
+- block database activity;
+- terminate sessions;
+- quarantine users;
+- modify database objects;
+- execute destructive response actions.
+
+---
+
+### Signed Incident Notifications
+
+AI-DAC can send signed incident summaries without exposing SQL statements, credentials, tokens, or database connection strings.
+
+Configure a webhook secret:
 
 ```bash
 export AIDAC_INCIDENT_WEBHOOK_SECRET="replace-with-random-secret"
+```
+
+Send incident notifications:
+
+```bash
 aidac incidents notify \
   --webhook-url https://operations.example/aidac-incidents \
   --min-severity high
 ```
 
-The default correlation window is 30 minutes. Set `AIDAC_INCIDENT_WINDOW_MINUTES` for the API and
-service, or pass `--window-minutes` to incident CLI commands.
+The default incident-correlation window is 30 minutes.
 
-## Backup and restore
+Configure it globally:
 
-Create a consistent backup:
+```bash
+export AIDAC_INCIDENT_WINDOW_MINUTES=30
+```
+
+Alternatively, pass the correlation window directly to the relevant CLI command:
+
+```bash
+aidac incidents correlate --window-minutes 30
+```
+
+---
+
+## Backup and Restore
+
+AI-DAC provides consistent backup and restore operations for alert lifecycle data.
+
+### Create a Backup
 
 ```bash
 aidac storage backup
 ```
 
-Select an explicit output path:
+To specify an explicit output location:
 
 ```bash
-aidac storage backup --output ~/Backups/aidac-alerts.db
+aidac storage backup \
+    --output ~/Backups/aidac-alerts.db
 ```
 
-Restore after validation:
+Backups preserve alert lifecycle information and metadata required for operational continuity.
+
+---
+
+### Restore a Backup
+
+After validating the backup, restore it using:
 
 ```bash
 aidac storage restore ~/Backups/aidac-alerts.db --yes
 ```
 
-## Tamper-evident audit log
+Restore operations require explicit confirmation to help prevent accidental data loss.
 
-Each new audit record contains a sequence number, the previous record hash, and its own
-SHA-256 record hash. Legacy records remain readable and new records chain forward from them.
+---
+
+## Tamper-Evident Audit Log
+
+AI-DAC maintains a tamper-evident audit log designed to support traceability and integrity verification.
+
+Each audit record contains:
+
+- a monotonically increasing sequence number;
+- the hash of the previous record;
+- its own SHA-256 record hash.
+
+This chained structure allows integrity verification without modifying existing records.
+
+Legacy audit records remain readable, while newly generated records continue the integrity chain.
+
+Verify the audit log:
 
 ```bash
 aidac audit verify
+```
+
+JSON output:
+
+```bash
 aidac audit verify --json
 ```
 
-## Role-aware REST API
+---
 
-Create separate random tokens:
+## Role-Aware REST API
+
+AI-DAC includes a REST API supporting authenticated access for different operational roles.
+
+### Create API Tokens
+
+Generate independent tokens for each role.
 
 ```bash
 export AIDAC_API_VIEWER_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+
 export AIDAC_API_ANALYST_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+
 export AIDAC_API_ADMIN_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
 ```
 
-The legacy `AIDAC_API_TOKEN` variable remains accepted as an administrator token.
+The legacy variable
 
-Start the local service:
+```text
+AIDAC_API_TOKEN
+```
+
+continues to function as an administrator token for backward compatibility.
+
+---
+
+### Start the API
 
 ```bash
 aidac api serve --rate-limit 120
 ```
 
-Role permissions:
+---
 
-- `viewer`: list, search, summarize, and inspect alerts
-- `analyst`: viewer permissions plus acknowledge and resolve
-- `admin`: analyst permissions plus storage and audit diagnostics
+### Access Roles
 
-Useful routes:
+| Role | Capabilities |
+|------|--------------|
+| **viewer** | View alerts, incidents, summaries, dashboards, and metrics |
+| **analyst** | Viewer permissions plus acknowledge and resolve alerts |
+| **admin** | Analyst permissions plus storage management and audit diagnostics |
 
-- `GET /health/live`
-- `GET /health/ready`
-- `GET /api/v1/alerts?limit=50&offset=0&q=production`
-- `GET /api/v1/alerts/summary`
-- `GET /api/v1/alerts/{alert_id}`
-- `GET /api/v1/incidents?status=open&min_risk=0.8`
-- `GET /api/v1/incidents/summary`
-- `GET /api/v1/incidents/{incident_id}`
-- `GET /api/v1/incidents/{incident_id}/assessment`
-- `POST /api/v1/alerts/{alert_id}/ack`
-- `POST /api/v1/alerts/{alert_id}/resolve`
-- `GET /api/v1/system/storage`
-- `GET /api/v1/system/audit/verify`
-- `GET /api/v1/system/components`
-- `GET /metrics` (viewer token required)
+---
 
-OpenAPI documentation is available at `http://127.0.0.1:8000/docs`.
+### Common REST Endpoints
 
+Health
 
-## Prometheus metrics
+```text
+GET /health/live
+GET /health/ready
+```
 
-The authenticated `/metrics` endpoint exposes bounded HTTP counters, request-duration sums
-and counts, alert gauges, correlated-incident gauges, recurrence state, and alert-store availability.
-Prometheus can use the viewer token as a bearer token.
+Alerts
+
+```text
+GET /api/v1/alerts
+GET /api/v1/alerts/summary
+GET /api/v1/alerts/{alert_id}
+
+POST /api/v1/alerts/{alert_id}/ack
+POST /api/v1/alerts/{alert_id}/resolve
+```
+
+Incidents
+
+```text
+GET /api/v1/incidents
+GET /api/v1/incidents/summary
+GET /api/v1/incidents/{incident_id}
+GET /api/v1/incidents/{incident_id}/assessment
+```
+
+System
+
+```text
+GET /api/v1/system/storage
+GET /api/v1/system/audit/verify
+GET /api/v1/system/components
+```
+
+Metrics
+
+```text
+GET /metrics
+```
+
+A valid Viewer token is required.
+
+---
+
+### OpenAPI Documentation
+
+When the API is running locally, interactive OpenAPI documentation is available at
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+---
+
+## Prometheus Metrics
+
+AI-DAC exports Prometheus-compatible metrics for operational monitoring.
+
+The authenticated `/metrics` endpoint exposes:
+
+- HTTP request counters;
+- request duration statistics;
+- alert counts;
+- correlated incident counts;
+- recurrence information;
+- storage availability;
+- component health.
+
+Prometheus may authenticate using the Viewer token.
+
+Example:
 
 ```bash
-curl -H "Authorization: Bearer $AIDAC_API_VIEWER_TOKEN" \
+curl \
+  -H "Authorization: Bearer $AIDAC_API_VIEWER_TOKEN" \
   http://127.0.0.1:8000/metrics
 ```
 
-No alert identifiers, SQL statements, database usernames, DSNs, or tokens are used as metric
-labels.
+To preserve operational privacy, metric labels never include:
 
-## Structured logging
+- SQL statements;
+- alert identifiers;
+- usernames;
+- DSNs;
+- authentication tokens.
 
-Write AI-DAC application events as private JSON Lines records:
+---
+
+## Structured Logging
+
+AI-DAC records application events as structured JSON Lines logs.
+
+Example:
 
 ```bash
 aidac api serve \
-  --log-format json \
-  --log-file ~/.local/state/aidac/service.jsonl
+    --log-format json \
+    --log-file ~/.local/state/aidac/service.jsonl
 ```
 
-The file is created with mode `600`. HTTP request records include method, normalized path,
-status code, and duration without retaining bearer tokens or dynamic alert identifiers.
+The log file is created with file mode:
 
-## User-level systemd deployment
+```text
+600
+```
 
-Generate a hardened service and a private environment template:
+HTTP request records include:
+
+- method;
+- normalized path;
+- status code;
+- request duration.
+
+Sensitive information such as bearer tokens, SQL statements, and dynamic alert identifiers is intentionally excluded from structured logs.
+
+---
+
+## User-Level systemd Deployment
+
+Generate a hardened user service:
 
 ```bash
 aidac service install
 ```
 
-Edit `~/.config/aidac/aidac.env`, add the required random tokens and optional PostgreSQL
-store variables, then start the service:
+This creates:
+
+- a hardened `systemd` unit;
+- a private environment template.
+
+Configure:
+
+```text
+~/.config/aidac/aidac.env
+```
+
+Then start the service:
 
 ```bash
 systemctl --user enable --now aidac-api.service
+
 aidac service status
+
 aidac service logs --lines 100
 ```
 
-The generated unit is loopback-only and uses `NoNewPrivileges`, `ProtectSystem=strict`,
-`ProtectHome=read-only`, private temporary storage, restart-on-failure, and `UMask=0077`.
+The generated service uses security hardening including:
 
-## Operations bundle
+- loopback-only binding;
+- `NoNewPrivileges`;
+- `ProtectSystem=strict`;
+- `ProtectHome=read-only`;
+- private temporary directories;
+- restart-on-failure;
+- restrictive file permissions (`UMask=0077`).
 
-Generate version-controlled observability assets without embedding secrets:
+---
+
+## Operations Bundle
+
+AI-DAC can generate a complete observability bundle without embedding secrets.
+
+Create the bundle:
 
 ```bash
 aidac ops init \
-  --output-dir ./aidac-operations \
-  --aidac-url http://127.0.0.1:8000 \
-  --viewer-token-file ~/.config/aidac/viewer.token
-
-aidac ops validate --directory ./aidac-operations
+    --output-dir ./aidac-operations \
+    --aidac-url http://127.0.0.1:8000 \
+    --viewer-token-file ~/.config/aidac/viewer.token
 ```
 
-The bundle contains Prometheus scrape configuration, AI-DAC service and incident alerting rules, an
-Alertmanager receiver template, Grafana provisioning, an incident-aware security-operations dashboard, an
-OpenTelemetry Collector configuration, a Docker Compose file, and a component-health TOML
-template. It references a viewer-token file but never copies the token into generated YAML.
+Validate the generated assets:
 
-Before starting the bundle, create a private `grafana-admin-password` file and replace the
-Alertmanager webhook placeholder.
+```bash
+aidac ops validate \
+    --directory ./aidac-operations
+```
+
+Generated assets include:
+
+- Prometheus configuration;
+- Alertmanager configuration;
+- Grafana dashboards;
+- OpenTelemetry Collector configuration;
+- Docker Compose deployment;
+- component-health templates.
+
+Viewer tokens are referenced through external files and are never embedded into generated configuration files.
+
+---
+
+## Start the Operations Stack
 
 ```bash
 cd aidac-operations
+
 chmod 600 grafana-admin-password
+
 export AIDAC_UID="$(id -u)"
 export AIDAC_GID="$(id -g)"
-docker compose -f docker-compose.ops.yml up -d
+
+docker compose \
+    -f docker-compose.ops.yml up -d
 ```
 
-## Distributed component health
+---
 
-Configure HTTP health targets in TOML:
+## Distributed Component Health
+
+AI-DAC continuously monitors operational components through configurable health probes.
+
+Example configuration:
 
 ```toml
 [[components]]
@@ -346,94 +765,306 @@ required = true
 timeout_seconds = 3.0
 ```
 
-Run an explicit health check and write a private JSON report:
+Execute a health check:
 
 ```bash
 aidac ops health \
-  --config ~/.config/aidac/components.toml \
-  --report ~/.local/state/aidac/component-health.json
+    --config ~/.config/aidac/components.toml \
+    --report ~/.local/state/aidac/component-health.json
 ```
 
-To make the API and `/metrics` probe the same targets, set:
+To make both the REST API and Prometheus metrics use the same component list:
 
 ```bash
 export AIDAC_COMPONENTS_FILE=~/.config/aidac/components.toml
 ```
 
-Administrators can inspect the current result through
-`GET /api/v1/system/components`. Prometheus exposes `aidac_component_up`,
-`aidac_component_required`, and `aidac_component_probe_duration_seconds` without using target
-URLs or credentials as labels.
+When configured, degraded health states may trigger signed webhook notifications while protecting operational secrets.
 
-A degraded health check can send a signed HTTPS notification:
+---
 
-```bash
-export AIDAC_OPERATIONS_WEBHOOK_SECRET="replace-with-random-secret"
-aidac ops health \
-  --config ~/.config/aidac/components.toml \
-  --notify-webhook https://operations.example/aidac-health
-```
+## OpenTelemetry Trace Export
 
-## OpenTelemetry trace export
+AI-DAC supports distributed tracing using the OpenTelemetry Protocol (OTLP) over HTTP.
 
-AI-DAC can export API request spans with OTLP over HTTP. Dynamic alert identifiers are
-normalized before becoming span attributes.
+Tracing provides end-to-end visibility into API requests while preserving operational privacy.
+
+Dynamic alert identifiers are normalized before becoming span attributes, reducing the exposure of operational details.
+
+### Configure OTLP Export
 
 ```bash
 export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://127.0.0.1:4318/v1/traces
 export OTEL_SERVICE_NAME=aidac-api
+```
+
+Start the API:
+
+```bash
 aidac api serve
 ```
 
-The exporter is disabled when no OTLP endpoint is configured. Production deployments should
-send OTLP to an OpenTelemetry Collector and then forward traces to the organization-approved
-backend.
+If no OTLP endpoint is configured, trace export remains disabled.
 
-## Web dashboard
+For production deployments, traces should be forwarded to an OpenTelemetry Collector before being exported to the organization's approved observability platform.
 
-Create a separate dashboard token and enable the dashboard:
+---
+
+## Web Dashboard
+
+AI-DAC includes an authenticated browser-based security operations dashboard.
+
+### Create a Dashboard Token
 
 ```bash
 export AIDAC_DASHBOARD_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+```
+
+Start the dashboard:
+
+```bash
 aidac api serve --dashboard
 ```
 
-Open `http://127.0.0.1:8000/dashboard`. The API bearer tokens are never placed in browser
-JavaScript, local storage, page URLs, or HTML.
+Open your browser:
 
-## Production configuration
-
-Create a hardened configuration template without secrets:
-
-```bash
-aidac config production --path ./aidac.production.toml
+```text
+http://127.0.0.1:8000/dashboard
 ```
 
-Inspect the effective configuration:
+The dashboard provides operational visibility into alerts, incidents, system status, and monitoring information.
+
+Security-sensitive API bearer tokens are never stored in:
+
+- browser JavaScript;
+- Local Storage;
+- session URLs;
+- rendered HTML pages.
+
+---
+
+## Production Configuration
+
+Generate a hardened production configuration template.
+
+```bash
+aidac config production \
+    --path ./aidac.production.toml
+```
+
+Display the effective configuration:
 
 ```bash
 aidac config show --json
 ```
 
-The template covers PostgreSQL collection, local storage paths, API binding, rate limiting, and dashboard session settings. PostgreSQL lifecycle storage is selected only through `AIDAC_ALERT_STORE_DSN` and `AIDAC_ALERT_STORE_SCHEMA`. Passwords and tokens must remain in environment variables or a dedicated secret
-manager.
+The generated configuration template includes:
+
+- PostgreSQL collection settings;
+- local storage locations;
+- API binding configuration;
+- rate-limiting settings;
+- dashboard session configuration;
+- lifecycle-store configuration.
+
+Sensitive information—including passwords, authentication tokens, and database credentials—should remain in environment variables or an approved secrets-management system.
+
+---
 
 ## Diagnostics
 
+AI-DAC includes built-in diagnostic tools to verify software integrity and deployment readiness.
+
+Run diagnostics:
+
 ```bash
 aidac doctor
+```
+
+Generate structured diagnostic output:
+
+```bash
 aidac doctor --json
 ```
 
-The diagnostic command checks configuration parsing, alert-store integrity, audit-chain
-integrity, private file permissions, and API token availability in the current shell.
+The diagnostic process verifies:
 
-## Network safety
+- configuration parsing;
+- storage integrity;
+- audit-chain integrity;
+- private file permissions;
+- API token availability;
+- operational configuration.
 
-The API listens on loopback by default. Binding to a non-loopback address requires both
-`--allow-remote` and TLS certificate/key files. CORS is not enabled by default. AI-DAC
-operates in observation mode and does not automatically modify or block database activity.
+These diagnostics are intended to simplify troubleshooting while preserving operational security.
 
-## License
+---
 
-Apache License 2.0.
+## Network Safety
+
+The REST API is designed with secure default behavior.
+
+By default:
+
+- the API listens only on the loopback interface;
+- remote access is disabled;
+- CORS is disabled.
+
+Binding to a non-loopback interface requires:
+
+- `--allow-remote`;
+- TLS certificate files;
+- TLS private key files.
+
+AI-DAC operates in **observation mode**.
+
+The software does **not** automatically:
+
+- block database sessions;
+- terminate client connections;
+- modify SQL statements;
+- change database objects;
+- execute destructive response actions.
+
+Human operators remain responsible for all operational decisions.
+
+---
+
+# Research Context
+
+AI-DAC is the reference software implementation developed in support of the doctoral research project:
+
+> **Triple-Loop Learning for Lifecycle-Aware Database Cybersecurity: A Recursive Learning Framework**
+
+The repository focuses on the engineering implementation of the framework, including software architecture, APIs, operational tooling, and testing infrastructure.
+
+The associated doctoral dissertation presents the scientific contributions, theoretical framework, methodology, experimental design, and confirmatory evaluation.
+
+Although developed together, the software repository and the dissertation serve different purposes and should be cited independently where appropriate.
+
+---
+
+# Citation
+
+If AI-DAC contributes to your research, please cite both the software repository and the associated doctoral research where appropriate.
+
+## Software Citation
+
+William Kandolo.
+
+**AI-DAC: Artificial Intelligence–Driven Anomaly Detection and Control.**
+
+GitHub Repository.
+
+```text
+https://github.com/a09726537/AI-DAC
+```
+
+### BibTeX
+
+```bibtex
+@software{kandolo2026aidac,
+  author  = {William Kandolo},
+  title   = {AI-DAC: Artificial Intelligence--Driven Anomaly Detection and Control},
+  year    = {2026},
+  url     = {https://github.com/a09726537/AI-DAC},
+  license = {Apache-2.0}
+}
+```
+
+---
+
+# Contributing
+
+Contributions that improve software quality, documentation, testing, portability, maintainability, or reproducibility are welcome.
+
+Recommended workflow:
+
+```text
+Fork Repository
+       │
+       ▼
+Create Feature Branch
+       │
+       ▼
+Develop
+       │
+       ▼
+Run Tests
+       │
+       ▼
+Update Documentation
+       │
+       ▼
+Submit Pull Request
+```
+
+Please ensure that contributions:
+
+- follow existing coding conventions;
+- include documentation updates where appropriate;
+- preserve backward compatibility whenever practical;
+- include tests for new functionality.
+
+---
+
+# Reproducibility Policy
+
+This repository contains the **reference software implementation** of AI-DAC.
+
+It is intended to support software development, experimentation, and engineering validation.
+
+To preserve scientific integrity, the following research artifacts are maintained separately from the evolving source code:
+
+- protocol documentation;
+- benchmark manifests;
+- dataset provenance;
+- statistical analysis plans;
+- evaluation records;
+- reproducibility reports;
+- execution manifests;
+- archived evaluation environments.
+
+A protocol-frozen evaluation release is planned following the confirmatory phase of the associated doctoral research.
+
+That release is expected to document the software version, execution procedures, benchmark configurations, statistical methodology, and evaluation artifacts used for the dissertation.
+
+---
+
+# License
+
+AI-DAC is distributed under the **Apache License 2.0**.
+
+See the `LICENSE` file for the complete license text.
+
+---
+
+# Acknowledgements
+
+The development of AI-DAC has benefited from publicly available research literature, open-source software, and the broader cybersecurity research community.
+
+The author gratefully acknowledges the academic environment supporting the associated doctoral research at the University of Vienna.
+
+---
+
+# Contact
+
+**William Kandolo**
+
+Doctoral Researcher
+
+University of Vienna
+
+GitHub
+
+```text
+https://github.com/a09726537/AI-DAC
+```
+
+ORCID
+
+```text
+https://orcid.org/0009-0007-2373-8509
+```
+
+
