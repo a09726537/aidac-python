@@ -943,7 +943,35 @@ The associated doctoral dissertation presents the scientific contributions, theo
 Although developed together, the software repository and the dissertation serve different purposes and should be cited independently where appropriate.
 
 ---
+# Citation
 
+When using AI-DAC in academic or technical work, cite this software repository.
+
+## Software Citation
+
+William Kandolo.
+
+**AI-DAC Python Library: Reference Software Implementation for Lifecycle-Aware Database Cybersecurity.**
+
+Version 1.4.0.dev0, 2026.
+
+```text
+https://github.com/a09726537/aidac-python
+```
+
+### BibTeX
+
+```bibtex
+@software{kandolo2026aidacpython,
+  author    = {William Kandolo},
+  title     = {{AI-DAC Python Library}: Reference Software Implementation for Lifecycle-Aware Database Cybersecurity},
+  year      = {2026},
+  version   = {1.4.0.dev0},
+  url       = {https://github.com/a09726537/aidac-python},
+  doi       = {},
+  license   = {Apache-2.0}
+}
+```
 # Citation
 
 If AI-DAC contributes to your research, please cite both the software repository and the associated doctoral research where appropriate.
